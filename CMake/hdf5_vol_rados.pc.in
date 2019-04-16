@@ -1,0 +1,14 @@
+# This gives access to the hdf5 daos header files
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=@CMAKE_INSTALL_PREFIX@
+libdir=@HDF5_VOL_RADOS_INSTALL_LIB_DIR@
+includedir=@HDF5_VOL_RADOS_INSTALL_INCLUDE_DIR@
+
+Name: HDF5 RADOS
+Description: HDF5 RADOS VOL connector
+Version: @HDF5_VOL_RADOS_PACKAGE_VERSION@
+URL: http://www.hdfgroup.org
+Requires: @HDF5_VOL_RADOS_PKG_DEPENDENCIES@
+Libs: -L${libdir} @HDF5_VOL_RADOS_LIBRARIES@
+Libs.private: @HDF5_VOL_RADOS_LIB_DEPENDENCIES@
+Cflags: -I${includedir} @HDF5_VOL_RADOS_INCLUDE_DEPENDENCIES@

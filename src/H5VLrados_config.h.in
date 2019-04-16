@@ -1,0 +1,64 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * Copyright by The HDF Group.                                               *
+ * All rights reserved.                                                      *
+ *                                                                           *
+ * This file is part of the HDF5 RADOS VOL connector. The full copyright      *
+ * notice, including terms governing use, modification, and redistribution,  *
+ * is contained in the COPYING file, which can be found at the root of the   *
+ * source code distribution tree.                                            *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/* Generated file. Only edit H5VLrados_config.h.in. */
+
+#ifndef RADOS_VOL_CONFIG_H
+#define RADOS_VOL_CONFIG_H
+
+/*****************/
+/* Public Macros */
+/*****************/
+
+/* Reflects major releases of RADOS VOL */
+#define H5VL_RADOS_VERSION_MAJOR @HDF5_VOL_RADOS_VERSION_MAJOR@
+/* Reflects any API changes */
+#define H5VL_RADOS_VERSION_MINOR @HDF5_VOL_RADOS_VERSION_MINOR@
+/* Reflects any library code changes */
+#define H5VL_RADOS_VERSION_PATCH @HDF5_VOL_RADOS_VERSION_PATCH@
+
+/* Visibility of symbols */
+#if defined(__GNUC__) && (__GNUC__ >= 4)
+# define H5VL_RADOS_DLL_IMPORT __attribute__((visibility("default")))
+# define H5VL_RADOS_DLL_EXPORT __attribute__((visibility("default")))
+# define H5VL_RADOS_DLL_HIDDEN __attribute__((visibility("hidden")))
+#else
+# define H5VL_RADOS_DLL_IMPORT
+# define H5VL_RADOS_DLL_EXPORT
+# define H5VL_RADOS_DLL_HIDDEN
+#endif
+
+/* Inline macro */
+#define H5VL_RADOS_INLINE __inline__
+
+/* Fallthrough macro */
+#if defined(__GNUC__) && (__GNUC__ >= 7)
+# define H5VL_RADOS_FALLTHROUGH() __attribute__((fallthrough))
+#else
+# define H5VL_RADOS_FALLTHROUGH()
+#endif
+
+/* Shared libraries */
+#cmakedefine H5VL_RADOS_BUILD_SHARED_LIBS
+#ifdef H5VL_RADOS_BUILD_SHARED_LIBS
+# ifdef hdf5_vol_daos_EXPORTS
+#  define H5VL_RADOS_PUBLIC H5VL_RADOS_DLL_EXPORT
+# else
+#  define H5VL_RADOS_PUBLIC H5VL_RADOS_DLL_IMPORT
+# endif
+# define H5VL_RADOS_PRIVATE H5VL_RADOS_DLL_HIDDEN
+#else
+# define H5VL_RADOS_PUBLIC
+# define H5VL_RADOS_PRIVATE
+#endif
+
+/* Build Options */
+
+#endif /* RADOS_VOL_CONFIG_H */
