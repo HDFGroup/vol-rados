@@ -2,50 +2,67 @@
  * Copyright by The HDF Group.                                               *
  * All rights reserved.                                                      *
  *                                                                           *
- * This file is part of HDF5.  The full HDF5 copyright notice, including     *
- * terms governing use, modification, and redistribution, is contained in    *
- * the COPYING file, which can be found at the root of the source code       *
- * distribution tree, or in https://support.hdfgroup.org/ftp/HDF5/releases.  *
- * If you do not have access to either file, you may request a copy from     *
- * help@hdfgroup.org.                                                        *
+ * This file is part of the HDF5 RADOS VOL connector. The full copyright     *
+ * notice, including terms governing use, modification, and redistribution,  *
+ * is contained in the COPYING file, which can be found at the root of the   *
+ * source code distribution tree.                                            *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-/* This source code was developed under the Mochi project
- * (https://www.mcs.anl.gov/research/projects/mochi), supported by the U.S.
- * Department of Energy, Office of Science, under contract DE-AC02-06CH11357.
- */
-
 /*
- * Programmer:  Neil Fortner <nfortne2@hdfgroup.gov>
- *              December, 2016
- *
  * Purpose:	The public header file for the RADOS VOL plugin.
  */
+
 #ifndef H5VLrados_public_H
 #define H5VLrados_public_H
 
-/* External headers needed by this file */
-#ifdef HDF5_USE_MOBJECT
-#include <librados-mobject-store.h>
-#else
-#include <rados/librados.h>
-#endif
+#include "H5VLrados_config.h"
 
 /* Public headers needed by this file */
-#include "H5public.h"
-#include "H5Ipublic.h"
-
-#define H5VL_RADOS_VERSION      1
-#define H5VL_RADOS_VALUE        268
-#define H5VL_RADOS_NAME         "rados_vol_connector"
+#include <hdf5.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-H5_DLL herr_t H5VLrados_init(rados_t rados_cluster, const char *rados_pool);
-H5_DLL herr_t H5VLrados_term(void);
-H5_DLL herr_t H5Pset_fapl_rados(hid_t fapl_id, MPI_Comm comm, MPI_Info info);
+/**
+ * Initialize the RADOS VOL connector.
+ *
+ * Ceph environment variables are read when this is called, so if
+ * $CEPH_ARGS specifies everything you need to connect, no further
+ * configuration is necessary.
+ * If path is NULL, the default locations are searched, and the first
+ * found is used. The locations are:
+ * - $CEPH_CONF (environment variable)
+ * - /etc/ceph/ceph.conf
+ * - ~/.ceph/config
+ * - ceph.conf (in the current working directory)
+ *
+ * @param id        [IN]    the user to connect as (i.e. admin, not client.admin)
+ * @param path      [IN]    path to a Ceph configuration file
+ * @param pool_name [IN]    name of the pool to use
+ *
+ * @returns 0 on success, negative error code on failure
+ */
+H5VL_RADOS_PUBLIC herr_t H5VLrados_init(const char * const id, const char *path,
+    const char *pool_name);
+
+/**
+ * Finalize the RADOS VOL connector.
+ *
+ * @returns 0 on success, negative error code on failure
+ */
+H5VL_RADOS_PUBLIC herr_t H5VLrados_term(void);
+
+/**
+ * Set the file access property list to use the given MPI communicator/info.
+ *
+ * @param fapl_id   [IN]    file access property list ID
+ * @param comm      [IN]    MPI communicator
+ * @param info      [IN]    MPI info
+ *
+ * @returns 0 on success, negative error code on failure
+ */
+H5VL_RADOS_PUBLIC herr_t H5Pset_fapl_rados(hid_t fapl_id, MPI_Comm comm, MPI_Info info);
 
 #ifdef __cplusplus
 }

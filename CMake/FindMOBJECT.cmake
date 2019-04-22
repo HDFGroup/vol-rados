@@ -12,7 +12,7 @@ find_path(MOBJECT_INCLUDE_DIR librados-mobject-store.h
   PATHS /usr/local/include /usr/include)
 
 find_library(MOBJECT_LIBRARY NAMES mobject-store
-  HINTS ${PC_DRC_LIBDIR} ${PC_DRC_LIBRARY_DIRS}
+  HINTS ${PC_MOBJECT_LIBDIR} ${PC_MOBJECT_LIBRARY_DIRS}
   PATHS /usr/local/lib64 /usr/local/lib /usr/lib64 /usr/lib)
 
 set(MOBJECT_INCLUDE_DIRS ${MOBJECT_INCLUDE_DIR})

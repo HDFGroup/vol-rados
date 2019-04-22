@@ -14,18 +14,36 @@ set(HDF5_VOL_RADOS_BUILD_INCLUDE_DEPENDENCIES
 # External dependencies
 #------------------------------------------------------------------------------
 # RADOS
-find_package(RADOS REQUIRED)
-if(RADOS_FOUND)
-  set(HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES
-    ${HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES}
-    ${RADOS_INCLUDE_DIRS}
-  )
-  set(HDF5_VOL_RADOS_EXT_LIB_DEPENDENCIES
-    ${HDF5_VOL_RADOS_EXT_LIB_DEPENDENCIES}
-    ${RADOS_LIBRARIES}
-  )
+option(HDF5_VOL_RADOS_USE_MOBJECT "Use mobject backend instead of RADOS." ON)
+if(HDF5_VOL_RADOS_USE_MOBJECT)
+  find_package(MOBJECT REQUIRED)
+  if(MOBJECT_FOUND)
+    set(H5VL_RADOS_USE_MOBJECT 1)
+    set(HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES
+      ${HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES}
+      ${MOBJECT_INCLUDE_DIRS}
+    )
+    set(HDF5_VOL_RADOS_EXT_LIB_DEPENDENCIES
+      ${HDF5_VOL_RADOS_EXT_LIB_DEPENDENCIES}
+      ${MOBJECT_LIBRARIES}
+    )
+  else()
+    message(FATAL_ERROR "Could not find MOBJECT, please check MOBJECT_INCLUDE_DIR.")
+  endif()
 else()
-  message(FATAL_ERROR "Could not find RADOS, please check RADOS_INCLUDE_DIR.")
+  find_package(RADOS REQUIRED)
+  if(RADOS_FOUND)
+    set(HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES
+      ${HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES}
+      ${RADOS_INCLUDE_DIRS}
+    )
+    set(HDF5_VOL_RADOS_EXT_LIB_DEPENDENCIES
+      ${HDF5_VOL_RADOS_EXT_LIB_DEPENDENCIES}
+      ${RADOS_LIBRARIES}
+    )
+  else()
+    message(FATAL_ERROR "Could not find RADOS, please check RADOS_INCLUDE_DIR.")
+  endif()
 endif()
 
 # HDF5

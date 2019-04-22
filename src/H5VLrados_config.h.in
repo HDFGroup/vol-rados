@@ -2,7 +2,7 @@
  * Copyright by The HDF Group.                                               *
  * All rights reserved.                                                      *
  *                                                                           *
- * This file is part of the HDF5 RADOS VOL connector. The full copyright      *
+ * This file is part of the HDF5 RADOS VOL connector. The full copyright     *
  * notice, including terms governing use, modification, and redistribution,  *
  * is contained in the COPYING file, which can be found at the root of the   *
  * source code distribution tree.                                            *
@@ -10,19 +10,25 @@
 
 /* Generated file. Only edit H5VLrados_config.h.in. */
 
-#ifndef RADOS_VOL_CONFIG_H
-#define RADOS_VOL_CONFIG_H
+#ifndef H5VLrados_config_H
+#define H5VLrados_config_H
 
 /*****************/
 /* Public Macros */
 /*****************/
 
 /* Reflects major releases of RADOS VOL */
-#define H5VL_RADOS_VERSION_MAJOR @HDF5_VOL_RADOS_VERSION_MAJOR@
+#define H5VL_RADOS_VERSION_MAJOR    @HDF5_VOL_RADOS_VERSION_MAJOR@
 /* Reflects any API changes */
-#define H5VL_RADOS_VERSION_MINOR @HDF5_VOL_RADOS_VERSION_MINOR@
+#define H5VL_RADOS_VERSION_MINOR    @HDF5_VOL_RADOS_VERSION_MINOR@
 /* Reflects any library code changes */
-#define H5VL_RADOS_VERSION_PATCH @HDF5_VOL_RADOS_VERSION_PATCH@
+#define H5VL_RADOS_VERSION_PATCH    @HDF5_VOL_RADOS_VERSION_PATCH@
+/* Version string */
+#define H5VL_RADOS_VERSION_STRING   "@HDF5_VOL_RADOS_VERSION_FULL@"
+/* Package name */
+#define H5VL_RADOS_PACKAGE_NAME     "@HDF5_VOL_RADOS_PACKAGE_NAME@"
+/* Library name */
+#define H5VL_RADOS_LIBRARY_NAME     "@HDF5_VOL_RADOS_PACKAGE@"
 
 /* Visibility of symbols */
 #if defined(__GNUC__) && (__GNUC__ >= 4)
@@ -59,6 +65,18 @@
 # define H5VL_RADOS_PRIVATE
 #endif
 
-/* Build Options */
+/* Connector name */
+#ifndef H5VL_XSTR
+# define H5VL_XSTR(name)        #name
+#endif
+#ifndef H5VL_STR
+# define H5VL_STR(name)         H5VL_XSTR(name)
+#endif
+#define H5VL_RADOS_NAME         rados
+#define H5VL_RADOS_NAME_STRING  H5VL_STR(H5VL_RADOS_NAME)
+#define H5VL_RADOS_VALUE        268
 
-#endif /* RADOS_VOL_CONFIG_H */
+/* Build Options */
+#cmakedefine H5VL_RADOS_USE_MOBJECT
+
+#endif /* H5VLrados_config_H */
