@@ -19,13 +19,12 @@
 #include "h5rados_example.h"
 
 int main(int argc, char *argv[]) {
-    rados_t cluster;
     char *pool = "mypool";
     hid_t file = -1, dset = -1, file_space = -1, mem_space = -1, fapl = -1;
     hsize_t dims[2] = {4, 6};
     hsize_t fstart[2], count[2], mstart[2];
     int buf[4][6];
-    int i, j;
+    unsigned int i, j;
 
     (void)MPI_Init(&argc, &argv);
 
@@ -40,13 +39,8 @@ int main(int argc, char *argv[]) {
     mstart[0] = (hsize_t)atoi(argv[7]);
     mstart[1] = (hsize_t)atoi(argv[8]);
 
-    if(rados_create(&cluster, NULL) < 0)
-        ERROR;
-    if(rados_conf_read_file(cluster, "ceph.conf") < 0)
-        ERROR;
-
     /* Initialize VOL */
-    if(H5VLrados_init(cluster, pool) < 0)
+    if(H5VLrados_init(NULL, CEPH_CONFIG_FILE, pool) < 0)
         ERROR;
 
     /* Set up FAPL */

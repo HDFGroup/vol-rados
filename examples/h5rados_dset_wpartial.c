@@ -20,7 +20,6 @@
 #include <time.h>
 
 int main(int argc, char *argv[]) {
-    rados_t cluster;
     char *pool = "mypool";
     hid_t file = -1, dset = -1, file_space = -1, mem_space = -1, fapl = -1;
     hsize_t dims[2] = {4, 6};
@@ -44,13 +43,8 @@ int main(int argc, char *argv[]) {
     if(argc != 3)
         PRINTF_ERROR("argc != 3\n");
 
-    if(rados_create(&cluster, NULL) < 0)
-        ERROR;
-    if(rados_conf_read_file(cluster, CEPH_CONFIG_FILE) < 0)
-        ERROR;
-
     /* Initialize VOL */
-    if(H5VLrados_init(cluster, pool) < 0)
+    if(H5VLrados_init(NULL, CEPH_CONFIG_FILE, pool) < 0)
         ERROR;
 
     /* Set up FAPL */
