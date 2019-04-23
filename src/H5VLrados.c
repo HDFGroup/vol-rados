@@ -15,12 +15,13 @@
 #include "H5VLrados.h"          /* RADOS plugin                         */
 #include "H5PLextern.h"
 #include "H5VLerror.h"
+#include "H5VLselect.h"
 
 /* External headers needed by this file */
 #ifdef H5VL_RADOS_USE_MOBJECT
-#include <librados-mobject-store.h>
+# include <librados-mobject-store.h>
 #else
-#include <rados/librados.h>
+# include <rados/librados.h>
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -323,6 +324,12 @@ static herr_t H5VL_rados_build_io_op_contig(hid_t file_space_id, size_t type_siz
 static herr_t H5VL_rados_scatter_cb(const void **src_buf,
     size_t *src_buf_bytes_used, void *_udata);
 
+/* TODO temporary signatures Operations on dataspace selection iterators */
+hid_t H5Ssel_iter_create(hid_t spaceid, size_t elmt_size, unsigned flags);
+herr_t H5Ssel_iter_get_seq_list(hid_t sel_iter_id, size_t maxseq,
+    size_t maxbytes, size_t *nseq, size_t *nbytes, hsize_t *off, size_t *len);
+herr_t H5Ssel_iter_close(hid_t sel_iter_id);
+
 /*******************/
 /* Local Variables */
 /*******************/
@@ -425,8 +432,8 @@ static hbool_t H5VL_rados_init_g = FALSE;
 static H5VL_rados_params_t H5VL_rados_params_g = {NULL, NULL};
 
 /* Error stack declarations */
-static hid_t H5VL_ERR_STACK_g = H5I_INVALID_HID;
-static hid_t H5VL_ERR_CLS_g = H5I_INVALID_HID;
+hid_t H5VL_ERR_STACK_g = H5I_INVALID_HID;
+hid_t H5VL_ERR_CLS_g = H5I_INVALID_HID;
 
 /*---------------------------------------------------------------------------*/
 
@@ -1021,8 +1028,8 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 {
     H5VL_rados_select_chunk_info_t *chunk_info = NULL; /* Array of info for each chunk selected in the file */
     H5VL_rados_dset_t *dset = (H5VL_rados_dset_t *)_dset;
-    H5S_sel_iter_t sel_iter;    /* Selection iteration info */
-    hbool_t sel_iter_init = FALSE;      /* Selection iteration info has been initialized */
+    hid_t sel_iter_id; /* Selection iteration info */
+    hbool_t sel_iter_init = FALSE; /* Selection iteration info has been initialized */
     int ndims;
     hsize_t dim[H5S_MAX_RANK];
     hid_t real_file_space_id;
@@ -1186,20 +1193,20 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                 /* Check for contiguous memory buffer */
 
                 /* Initialize selection iterator  */
-                if(H5S_select_iter_init(&sel_iter, chunk_info[i].mspace_id, (size_t)1) < 0)
+                if((sel_iter_id = H5Ssel_iter_create(chunk_info[i].mspace_id, (size_t)1, 0)) < 0)
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to initialize selection iterator");
                 sel_iter_init = TRUE;       /* Selection iteration info has been initialized */
 
                 /* Get the sequence list - only check the first sequence because we only
                  * care if it is contiguous and if so where the contiguous selection
                  * begins */
-                if(H5S_SELECT_GET_SEQ_LIST(chunk_info[i].mspace_id, 0, &sel_iter, (size_t)1, (size_t)-1, &nseq_tmp, &nelem_tmp, &sel_off, &sel_len) < 0)
+                if(H5Ssel_iter_get_seq_list(sel_iter_id, (size_t)1, (size_t)-1, &nseq_tmp, &nelem_tmp, &sel_off, &sel_len) < 0)
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTGET, FAIL, "sequence length generation failed");
                 contig = (sel_len == (size_t)num_elem);
                 sel_off *= (hsize_t)mem_type_size;
 
                 /* Release selection iterator */
-                if(H5S_SELECT_ITER_RELEASE(&sel_iter) < 0)
+                if(H5Ssel_iter_close(sel_iter_id) < 0)
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection iterator");
                 sel_iter_init = FALSE;
 
@@ -1286,7 +1293,7 @@ done:
     } /* end if */
 
     /* Release selection iterator */
-    if(sel_iter_init && H5S_SELECT_ITER_RELEASE(&sel_iter) < 0)
+    if(sel_iter_init && H5Ssel_iter_close(sel_iter_id) < 0)
         HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection iterator");
 
     FUNC_LEAVE_VOL
@@ -1959,6 +1966,9 @@ H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
             char       *glob_md_oid = NULL;
             uint64_t    gcpl_len = 0;
             time_t      pmtime;
+
+            /* TODO anything we should do with the fapl_id? */
+            (void) fapl_id;
 
             /* Get global metadata ID */
             if(H5VL_rados_oid_create_string_name(name, strlen(name), 0, &glob_md_oid) < 0)
@@ -3029,7 +3039,6 @@ H5VL_rados_link_follow_comp(H5VL_rados_group_t *grp, char *name,
     size_t name_len, hid_t dxpl_id, void **req, uint64_t *oid)
 {
     char saved_end = name[name_len];
-    herr_t ret_value = SUCCEED;
 
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
@@ -3819,10 +3828,11 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy file space");
 
             /* Make certain selections are stored in span tree form (not "optimized hyperslab" or "all") */
-            if (H5Shyper_convert(tmp_chunk_fspace_id) < 0) {
-                H5Sclose(tmp_chunk_fspace_id);
-                HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to convert selection to span trees");
-            } /* end if */
+            // TODO check whether this is still necessary after hyperslab update merge
+//            if (H5Shyper_convert(tmp_chunk_fspace_id) < 0) {
+//                H5Sclose(tmp_chunk_fspace_id);
+//                HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to convert selection to span trees");
+//            } /* end if */
 
             /* "AND" temporary chunk and current chunk */
             if (H5Sselect_hyperslab(tmp_chunk_fspace_id, H5S_SELECT_AND, start_coords, NULL, chunk_dims, NULL) < 0) {
@@ -3837,7 +3847,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
             } /* end if */
 
             /* Move selection back to have correct offset in chunk */
-            if (H5S_SELECT_ADJUST_U(tmp_chunk_fspace_id, start_coords) < 0) {
+            if (H5Sselect_adjust_u(tmp_chunk_fspace_id, start_coords) < 0) {
                 H5Sclose(tmp_chunk_fspace_id);
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk selection");
             } /* end if */
@@ -3857,10 +3867,11 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy memory space");
 
                 /* Release the current selection */
-                if (H5S_SELECT_RELEASE(tmp_chunk_mspace_id) < 0) {
-                    H5Sclose(tmp_chunk_mspace_id);
-                    HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection");
-                } /* end if */
+                // TODO check that part
+//                if (H5S_SELECT_RELEASE(tmp_chunk_mspace_id) < 0) {
+//                    H5Sclose(tmp_chunk_mspace_id);
+//                    HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection");
+//                } /* end if */
 
                 /* Copy the chunk's file space selection to its memory space selection */
                 if (H5Sselect_copy(tmp_chunk_mspace_id, tmp_chunk_fspace_id) < 0) {
@@ -3889,7 +3900,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
             i++;
 
             /* Determine if there are more chunks to process */
-            if ((chunk_sel_npoints = H5S_GET_SELECT_NPOINTS(tmp_chunk_fspace_id)) < 0)
+            if ((chunk_sel_npoints = H5Sget_select_npoints(tmp_chunk_fspace_id)) < 0)
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTGET, FAIL, "can't get number of points selected in chunk file space");
 
             num_sel_points_cast -= (hsize_t) chunk_sel_npoints;
@@ -3953,10 +3964,10 @@ H5VL_rados_build_io_op_merge(hid_t mem_space_id, hid_t file_space_id,
     size_t type_size, size_t tot_nelem, void *rbuf, const void *wbuf,
     rados_read_op_t read_op, rados_write_op_t write_op)
 {
-    H5S_sel_iter_t mem_sel_iter;    /* Selection iteration info */
-    hbool_t mem_sel_iter_init = FALSE;      /* Selection iteration info has been initialized */
-    H5S_sel_iter_t file_sel_iter;    /* Selection iteration info */
-    hbool_t file_sel_iter_init = FALSE;      /* Selection iteration info has been initialized */
+    hid_t mem_sel_iter_id;              /* Selection iteration info */
+    hbool_t mem_sel_iter_init = FALSE;  /* Selection iteration info has been initialized */
+    hid_t file_sel_iter_id;             /* Selection iteration info */
+    hbool_t file_sel_iter_init = FALSE; /* Selection iteration info has been initialized */
     size_t mem_nseq = 0;
     size_t file_nseq = 0;
     size_t nelem;
@@ -3977,10 +3988,10 @@ H5VL_rados_build_io_op_merge(hid_t mem_space_id, hid_t file_space_id,
     assert(tot_nelem > 0);
 
     /* Initialize selection iterators  */
-    if(H5S_select_iter_init(&mem_sel_iter, mem_space_id, type_size) < 0)
+    if((mem_sel_iter_id = H5Ssel_iter_create(mem_space_id, type_size, 0)) < 0)
         HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to initialize selection iterator");
     mem_sel_iter_init = TRUE;       /* Selection iteration info has been initialized */
-    if(H5S_select_iter_init(&file_sel_iter, file_space_id, type_size) < 0)
+    if((file_sel_iter_id = H5Ssel_iter_create(file_space_id, type_size, 0)) < 0)
         HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to initialize selection iterator");
     file_sel_iter_init = TRUE;       /* Selection iteration info has been initialized */
 
@@ -3989,13 +4000,13 @@ H5VL_rados_build_io_op_merge(hid_t mem_space_id, hid_t file_space_id,
         /* Get the sequences of bytes if necessary */
         assert(mem_i <= mem_nseq);
         if(mem_i == mem_nseq) {
-            if(H5S_SELECT_GET_SEQ_LIST(mem_space_id, 0, &mem_sel_iter, (size_t)H5VL_RADOS_SEQ_LIST_LEN, (size_t)-1, &mem_nseq, &nelem, mem_off, mem_len) < 0)
+            if(H5Ssel_iter_get_seq_list(mem_sel_iter_id, (size_t)H5VL_RADOS_SEQ_LIST_LEN, (size_t)-1, &mem_nseq, &nelem, mem_off, mem_len) < 0)
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTGET, FAIL, "sequence length generation failed");
             mem_i = 0;
         } /* end if */
         assert(file_i <= file_nseq);
         if(file_i == file_nseq) {
-            if(H5S_SELECT_GET_SEQ_LIST(file_space_id, 0, &file_sel_iter, (size_t)H5VL_RADOS_SEQ_LIST_LEN, (size_t)-1, &file_nseq, &nelem, file_off, file_len) < 0)
+            if(H5Ssel_iter_get_seq_list(file_sel_iter_id, (size_t)H5VL_RADOS_SEQ_LIST_LEN, (size_t)-1, &file_nseq, &nelem, file_off, file_len) < 0)
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTGET, FAIL, "sequence length generation failed");
             file_i = 0;
         } /* end if */
@@ -4037,9 +4048,9 @@ H5VL_rados_build_io_op_merge(hid_t mem_space_id, hid_t file_space_id,
 
 done:
     /* Release selection iterators */
-    if(mem_sel_iter_init && H5S_SELECT_ITER_RELEASE(&mem_sel_iter) < 0)
+    if(mem_sel_iter_init && H5Ssel_iter_close(mem_sel_iter_id) < 0)
         HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection iterator");
-    if(file_sel_iter_init && H5S_SELECT_ITER_RELEASE(&file_sel_iter) < 0)
+    if(file_sel_iter_init && H5Ssel_iter_close(file_sel_iter_id) < 0)
         HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection iterator");
 
     FUNC_LEAVE_VOL
@@ -4063,8 +4074,8 @@ H5VL_rados_build_io_op_match(hid_t file_space_id, size_t type_size,
     size_t tot_nelem, void *rbuf, const void *wbuf, rados_read_op_t read_op,
     rados_write_op_t write_op)
 {
-    H5S_sel_iter_t sel_iter;    /* Selection iteration info */
-    hbool_t sel_iter_init = FALSE;      /* Selection iteration info has been initialized */
+    hid_t sel_iter_id;              /* Selection iteration info */
+    hbool_t sel_iter_init = FALSE;  /* Selection iteration info has been initialized */
     size_t nseq;
     size_t nelem;
     hsize_t off[H5VL_RADOS_SEQ_LIST_LEN];
@@ -4077,14 +4088,14 @@ H5VL_rados_build_io_op_match(hid_t file_space_id, size_t type_size,
     assert(tot_nelem > 0);
 
     /* Initialize selection iterator  */
-    if(H5S_select_iter_init(&sel_iter, file_space_id, type_size) < 0)
+    if((sel_iter_id = H5Ssel_iter_create(file_space_id, type_size, 0)) < 0)
         HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to initialize selection iterator");
     sel_iter_init = TRUE;       /* Selection iteration info has been initialized */
 
     /* Generate sequences from the file space until finished */
     do {
         /* Get the sequences of bytes */
-        if(H5S_SELECT_GET_SEQ_LIST(file_space_id, 0, &sel_iter, (size_t)H5VL_RADOS_SEQ_LIST_LEN, (size_t)-1, &nseq, &nelem, off, len) < 0)
+        if(H5Ssel_iter_get_seq_list(sel_iter_id, (size_t)H5VL_RADOS_SEQ_LIST_LEN, (size_t)-1, &nseq, &nelem, off, len) < 0)
             HGOTO_ERROR(H5E_DATASPACE, H5E_CANTGET, FAIL, "sequence length generation failed");
         tot_nelem -= nelem;
 
@@ -4101,7 +4112,7 @@ H5VL_rados_build_io_op_match(hid_t file_space_id, size_t type_size,
 
 done:
     /* Release selection iterator */
-    if(sel_iter_init && H5S_SELECT_ITER_RELEASE(&sel_iter) < 0)
+    if(sel_iter_init && H5Ssel_iter_close(sel_iter_id) < 0)
         HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection iterator");
 
     FUNC_LEAVE_VOL
@@ -4125,8 +4136,8 @@ H5VL_rados_build_io_op_contig(hid_t file_space_id, size_t type_size,
     size_t tot_nelem, void *rbuf, const void *wbuf, rados_read_op_t read_op,
     rados_write_op_t write_op)
 {
-    H5S_sel_iter_t sel_iter;    /* Selection iteration info */
-    hbool_t sel_iter_init = FALSE;      /* Selection iteration info has been initialized */
+    hid_t sel_iter_id;              /* Selection iteration info */
+    hbool_t sel_iter_init = FALSE;  /* Selection iteration info has been initialized */
     size_t nseq;
     size_t nelem;
     hsize_t off[H5VL_RADOS_SEQ_LIST_LEN];
@@ -4140,14 +4151,14 @@ H5VL_rados_build_io_op_contig(hid_t file_space_id, size_t type_size,
     assert(tot_nelem > 0);
 
     /* Initialize selection iterator  */
-    if(H5S_select_iter_init(&sel_iter, file_space_id, type_size) < 0)
+    if((sel_iter_id = H5Ssel_iter_create(file_space_id, type_size, 0)) < 0)
         HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to initialize selection iterator");
     sel_iter_init = TRUE;       /* Selection iteration info has been initialized */
 
     /* Generate sequences from the file space until finished */
     do {
         /* Get the sequences of bytes */
-        if(H5S_SELECT_GET_SEQ_LIST(file_space_id, 0, &sel_iter, (size_t)H5VL_RADOS_SEQ_LIST_LEN, (size_t)-1, &nseq, &nelem, off, len) < 0)
+        if(H5Ssel_iter_get_seq_list(sel_iter_id, (size_t)H5VL_RADOS_SEQ_LIST_LEN, (size_t)-1, &nseq, &nelem, off, len) < 0)
             HGOTO_ERROR(H5E_DATASPACE, H5E_CANTGET, FAIL, "sequence length generation failed");
         tot_nelem -= nelem;
 
@@ -4165,7 +4176,7 @@ H5VL_rados_build_io_op_contig(hid_t file_space_id, size_t type_size,
 
 done:
     /* Release selection iterator */
-    if(sel_iter_init && H5S_SELECT_ITER_RELEASE(&sel_iter) < 0)
+    if(sel_iter_init && H5Ssel_iter_close(sel_iter_id) < 0)
         HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection iterator");
 
     FUNC_LEAVE_VOL

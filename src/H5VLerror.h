@@ -96,7 +96,7 @@
  * Use this macro to set return value.
  */
 #define FUNC_RETURN_SET(ret)                        \
-    __ret_value = ret
+    (__ret_value = ret)
 
 /**
  * Use this macro to test for error.
