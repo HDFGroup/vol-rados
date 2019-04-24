@@ -682,6 +682,14 @@ H5VL_rados_dataset_create(void *_item,
 
     FUNC_ENTER_VOL(void *, NULL)
 
+    if(!_item)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
+    if(!loc_params)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
+    /* TODO currenty does not support anonymous */
+    if(!name)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "dataset name is NULL");
+
     /* Check for write access */
     if(!(item->file->flags & H5F_ACC_RDWR))
         HGOTO_ERROR(H5E_FILE, H5E_BADVALUE, NULL, "no write intent on file");
@@ -834,6 +842,14 @@ H5VL_rados_dataset_open(void *_item,
 
     FUNC_ENTER_VOL(void *, NULL)
  
+    if(!_item)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
+    if(!loc_params)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
+    /* TODO currenty does not support anonymous */
+    if(!name)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "dataset name is NULL");
+
     /* Check for collective access, if not already set by the file */
     if(!collective)
         if(H5Pget_all_coll_metadata_ops(dapl_id, &collective) < 0)
@@ -1684,18 +1700,23 @@ H5VL_rados_file_create(const char *name, unsigned flags, hid_t fcpl_id,
         HGOTO_ERROR(H5E_FILE, H5E_CANTCOPY, NULL, "failed to copy fapl");
 
     /* Duplicate communicator and Info object. */
-    if(MPI_SUCCESS != MPI_Comm_dup(info->comm, &file->comm))
-        HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Communicator duplicate failed");
-    if((MPI_INFO_NULL != info->info)
-        && (MPI_SUCCESS != MPI_Info_dup(info->info, &file->info)))
-        HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Info duplicate failed");
+    if(info) {
+        if(MPI_SUCCESS != MPI_Comm_dup(info->comm, &file->comm))
+            HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Communicator duplicate failed");
+        if((MPI_INFO_NULL != info->info)
+            && (MPI_SUCCESS != MPI_Info_dup(info->info, &file->info)))
+            HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Info duplicate failed");
+    } else {
+        if(MPI_SUCCESS != MPI_Comm_dup(MPI_COMM_WORLD, &file->comm))
+            HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Communicator duplicate failed");
+    }
     if(MPI_SUCCESS != MPI_Comm_set_errhandler(file->comm, MPI_ERRORS_RETURN))
         HGOTO_ERROR(H5E_INTERNAL, H5E_CANTSET, NULL, "Cannot set MPI error handler");
 
     /* Obtain the process rank and size from the communicator attached to the
      * fapl ID */
-    MPI_Comm_rank(info->comm, &file->my_rank);
-    MPI_Comm_size(info->comm, &file->num_procs);
+    MPI_Comm_rank(file->comm, &file->my_rank);
+    MPI_Comm_size(file->comm, &file->num_procs);
 
     /* Determine if we requested collective object ops for the file */
     if(H5Pget_all_coll_metadata_ops(fapl_id, &file->collective) < 0)
@@ -1709,7 +1730,7 @@ H5VL_rados_file_create(const char *name, unsigned flags, hid_t fcpl_id,
     assert(H5VL_rados_oid_to_idx(file->root_grp->obj.bin_oid) == (uint64_t)1);
 
     /* Free info */
-    if(H5VL_rados_info_free(info) < 0)
+    if(info && H5VL_rados_info_free(info) < 0)
         HGOTO_ERROR(H5E_VOL, H5E_CANTFREE, NULL, "can't free connector info");
 
     FUNC_RETURN_SET((void *)file);
@@ -1778,18 +1799,23 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
         HGOTO_ERROR(H5E_FILE, H5E_CANTCOPY, NULL, "failed to copy fapl");
 
     /* Duplicate communicator and Info object. */
-    if(MPI_SUCCESS != MPI_Comm_dup(info->comm, &file->comm))
-        HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Communicator duplicate failed");
-    if((MPI_INFO_NULL != info->info)
-        && (MPI_SUCCESS != MPI_Info_dup(info->info, &file->info)))
-        HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Info duplicate failed");
+    if(info) {
+        if(MPI_SUCCESS != MPI_Comm_dup(info->comm, &file->comm))
+            HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Communicator duplicate failed");
+        if((MPI_INFO_NULL != info->info)
+            && (MPI_SUCCESS != MPI_Info_dup(info->info, &file->info)))
+            HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Info duplicate failed");
+    } else {
+        if(MPI_SUCCESS != MPI_Comm_dup(MPI_COMM_WORLD, &file->comm))
+            HGOTO_ERROR(H5E_INTERNAL, H5E_CANTCOPY, NULL, "Communicator duplicate failed");
+    }
     if(MPI_SUCCESS != MPI_Comm_set_errhandler(file->comm, MPI_ERRORS_RETURN))
         HGOTO_ERROR(H5E_INTERNAL, H5E_CANTSET, NULL, "Cannot set MPI error handler");
 
     /* Obtain the process rank and size from the communicator attached to the
      * fapl ID */
-    MPI_Comm_rank(info->comm, &file->my_rank);
-    MPI_Comm_size(info->comm, &file->num_procs);
+    MPI_Comm_rank(file->comm, &file->my_rank);
+    MPI_Comm_size(file->comm, &file->num_procs);
 
     /* Generate root group oid */
     H5VL_rados_oid_create_binary((uint64_t)1, H5I_GROUP, &root_grp_oid);
@@ -1845,12 +1871,12 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
             must_bcast = FALSE;
 
             /* MPI_Bcast foi_buf */
-            if(MPI_SUCCESS != MPI_Bcast(foi_buf, (int)sizeof(foi_buf_static), MPI_BYTE, 0, info->comm))
+            if(MPI_SUCCESS != MPI_Bcast(foi_buf, (int)sizeof(foi_buf_static), MPI_BYTE, 0, file->comm))
                 HGOTO_ERROR(H5E_FILE, H5E_MPI, NULL, "can't bcast global container handle");
 
             /* Need a second bcast if we had to allocate a dynamic buffer */
             if(foi_buf == foi_buf_dyn)
-                if(MPI_SUCCESS != MPI_Bcast((char *)p, (int)(gcpl_len), MPI_BYTE, 0, info->comm))
+                if(MPI_SUCCESS != MPI_Bcast((char *)p, (int)(gcpl_len), MPI_BYTE, 0, file->comm))
                     HGOTO_ERROR(H5E_FILE, H5E_MPI, NULL, "can't bcast file open info (second bcast)");
         } /* end if */
     } /* end if */
@@ -1858,7 +1884,7 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
         assert(sizeof(foi_buf_static) >= 2 * sizeof(uint64_t));
 
         /* Receive file open info */
-        if(MPI_SUCCESS != MPI_Bcast(foi_buf, (int)sizeof(foi_buf_static), MPI_BYTE, 0, info->comm))
+        if(MPI_SUCCESS != MPI_Bcast(foi_buf, (int)sizeof(foi_buf_static), MPI_BYTE, 0, file->comm))
             HGOTO_ERROR(H5E_FILE, H5E_MPI, NULL, "can't bcast global container handle");
 
         /* Decode max OID */
@@ -1901,7 +1927,7 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
         HGOTO_ERROR(H5E_ATOM, H5E_CANTINC, NULL, "can't increment FCPL ref count");
 
     /* Free info */
-    if(H5VL_rados_info_free(info) < 0)
+    if(info && H5VL_rados_info_free(info) < 0)
         HGOTO_ERROR(H5E_VOL, H5E_CANTFREE, NULL, "can't free connector info");
 
     FUNC_RETURN_SET((void *)file);
@@ -1918,7 +1944,7 @@ done:
          * in the other processes so we do not need to do the second bcast. */
         if(must_bcast) {
             memset(foi_buf_static, 0, sizeof(foi_buf_static));
-            if(MPI_SUCCESS != MPI_Bcast(foi_buf_static, sizeof(foi_buf_static), MPI_BYTE, 0, info->comm))
+            if(MPI_SUCCESS != MPI_Bcast(foi_buf_static, sizeof(foi_buf_static), MPI_BYTE, 0, file->comm))
                 HDONE_ERROR(H5E_FILE, H5E_MPI, NULL, "can't bcast global handle sizes");
         } /* end if */
 
@@ -1953,10 +1979,6 @@ H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
 
             break;
         }
-        /* H5Fmount */
-        case H5VL_FILE_MOUNT:
-        /* H5Fmount */
-        case H5VL_FILE_UNMOUNT:
         /* H5Fis_accessible */
         case H5VL_FILE_IS_ACCESSIBLE:
         {
@@ -1986,6 +2008,10 @@ H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
             break;
         }
 
+        /* H5Fmount */
+        case H5VL_FILE_MOUNT:
+        /* H5Fmount */
+        case H5VL_FILE_UNMOUNT:
         case H5VL_FILE_REOPEN:
         default:
             HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "invalid or unsupported specific operation");
@@ -2020,7 +2046,7 @@ done:
 /*---------------------------------------------------------------------------*/
 static void *
 H5VL_rados_group_create(void *_item,
-    const H5VL_loc_params_t H5VL_ATTR_UNUSED *loc_params, const char *name,
+    const H5VL_loc_params_t *loc_params, const char *name,
     hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id, void **req)
 {
     H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
@@ -2030,6 +2056,14 @@ H5VL_rados_group_create(void *_item,
     hbool_t collective = item->file->collective;
 
     FUNC_ENTER_VOL(void *, NULL)
+
+    if(!_item)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
+    if(!loc_params)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
+    /* TODO currenty does not support anonymous */
+    if(!name)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "group name is NULL");
 
     /* Check for write access */
     if(!(item->file->flags & H5F_ACC_RDWR))
@@ -2084,6 +2118,14 @@ H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
     hbool_t must_bcast = FALSE;
 
     FUNC_ENTER_VOL(void *, NULL)
+
+    if(!_item)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
+    if(!loc_params)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
+    /* TODO currenty does not support anonymous */
+    if(!name)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "group name is NULL");
 
     /* Check for collective access, if not already set by the file */
     if(!collective)
