@@ -466,12 +466,8 @@ H5VLrados_init(const char * const id, const char *path, const char *pool_name)
         HGOTO_DONE(SUCCEED);
 
     /* Check parameters */
-    if(NULL == id)
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "not a valid user name");
-    if(NULL == path)
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "not a valid path name");
-    if(NULL == pool_name)
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "not a valid pool name");
+    /* TODO for now we allow for NULL to be passed so that defaults or
+     * environment variables can be used */
 
     /* Init RADOS */
     if(H5VL__rados_init(id, path, pool_name) < 0)
@@ -1667,6 +1663,8 @@ H5VL_rados_file_create(const char *name, unsigned flags, hid_t fcpl_id,
     file->root_grp = NULL;
     file->fcpl_id = FAIL;
     file->fapl_id = FAIL;
+    file->info = MPI_INFO_NULL;
+    file->comm = MPI_COMM_NULL;
 
     /* Fill in fields of file we know */
     file->item.type = H5I_FILE;
@@ -1763,6 +1761,8 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
     file->root_grp = NULL;
     file->fcpl_id = FAIL;
     file->fapl_id = FAIL;
+    file->info = MPI_INFO_NULL;
+    file->comm = MPI_COMM_NULL;
 
     /* Fill in fields of file we know */
     file->item.type = H5I_FILE;
