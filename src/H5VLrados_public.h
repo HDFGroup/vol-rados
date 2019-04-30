@@ -17,6 +17,8 @@
 
 #include "H5VLrados_config.h"
 
+#include <mpi.h>
+
 /* Public headers needed by this file */
 #include <hdf5.h>
 
