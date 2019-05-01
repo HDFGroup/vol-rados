@@ -216,8 +216,9 @@ static herr_t H5VL_rados_info_free(void *_info);
 
 /* Dataset callbacks */
 static void *H5VL_rados_dataset_create(void *_item,
-    const H5VL_loc_params_t *loc_params, const char *name, hid_t dcpl_id,
-    hid_t dapl_id, hid_t dxpl_id, void **req);
+    const H5VL_loc_params_t *loc_params, const char *name,
+    hid_t lcpl_id, hid_t type_id, hid_t space_id,
+    hid_t dcpl_id, hid_t dapl_id, hid_t dxpl_id, void **req);
 static void *H5VL_rados_dataset_open(void *_item, const H5VL_loc_params_t *loc_params,
     const char *name, hid_t dapl_id, hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id,
@@ -245,7 +246,7 @@ static herr_t H5VL_rados_file_close(void *_file, hid_t dxpl_id, void **req);
 
 /* Group callbacks */
 static void *H5VL_rados_group_create(void *_item, const H5VL_loc_params_t *loc_params,
-    const char *name, hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id, void **req);
+    const char *name, hid_t lcpl_id, hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id, void **req);
 static void *H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
     const char *name, hid_t gapl_id, hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_group_close(void *_grp, hid_t dxpl_id, void **req);
@@ -670,11 +671,11 @@ H5VL_rados_info_free(void *_info)
 static void *
 H5VL_rados_dataset_create(void *_item,
     const H5VL_loc_params_t H5VL_ATTR_UNUSED *loc_params, const char *name,
+    hid_t lcpl_id, hid_t type_id, hid_t space_id,
     hid_t dcpl_id, hid_t dapl_id, hid_t dxpl_id, void **req)
 {
     H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
     H5VL_rados_dset_t *dset = NULL;
-    hid_t type_id, space_id;
     H5VL_rados_group_t *target_grp = NULL;
     uint8_t *md_buf = NULL;
     hbool_t collective = item->file->collective;
@@ -698,12 +699,6 @@ H5VL_rados_dataset_create(void *_item,
     if(!collective)
         if(H5Pget_all_coll_metadata_ops(dapl_id, &collective) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, NULL, "can't get collective access property");
-
-    /* Get creation properties */
-    if(H5Pget(dcpl_id, H5VL_PROP_DSET_TYPE_ID, &type_id) < 0)
-        HGOTO_ERROR(H5E_PLIST, H5E_CANTGET, NULL, "can't get property value for datatype ID");
-    if(H5Pget(dcpl_id, H5VL_PROP_DSET_SPACE_ID, &space_id) < 0)
-        HGOTO_ERROR(H5E_PLIST, H5E_CANTGET, NULL, "can't get property value for dataspace ID");
 
     /* Allocate the dataset object that is returned to the user */
     if(NULL == (dset = malloc(sizeof(H5VL_rados_dset_t))))
@@ -743,9 +738,9 @@ H5VL_rados_dataset_create(void *_item,
         /* Determine buffer sizes */
         if(H5Tencode(type_id, NULL, &type_size) < 0)
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of datatype");
-        if(H5Sencode(space_id, NULL, &space_size) < 0)
+        if(H5Sencode2(space_id, NULL, &space_size, H5P_DEFAULT) < 0)
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of dataaspace");
-        if(H5Pencode(dcpl_id, NULL, &dcpl_size) < 0)
+        if(H5Pencode2(dcpl_id, NULL, &dcpl_size, H5P_DEFAULT) < 0)
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of dcpl");
         md_size = (3 * sizeof(uint64_t)) + type_size + space_size + dcpl_size;
 
@@ -764,11 +759,11 @@ H5VL_rados_dataset_create(void *_item,
             HGOTO_ERROR(H5E_DATASET, H5E_CANTENCODE, NULL, "can't serialize datatype");
 
         /* Encode dataspace */
-        if(H5Sencode(space_id, md_buf + (3 * sizeof(uint64_t)) + type_size, &space_size) < 0)
+        if(H5Sencode2(space_id, md_buf + (3 * sizeof(uint64_t)) + type_size, &space_size, H5P_DEFAULT) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_CANTENCODE, NULL, "can't serialize dataaspace");
 
         /* Encode DCPL */
-        if(H5Pencode(dcpl_id, md_buf + (3 * sizeof(uint64_t)) + type_size + space_size, &dcpl_size) < 0)
+        if(H5Pencode2(dcpl_id, md_buf + (3 * sizeof(uint64_t)) + type_size + space_size, &dcpl_size, H5P_DEFAULT) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_CANTENCODE, NULL, "can't serialize dcpl");
 
         /* Write internal metadata to dataset */
@@ -2047,7 +2042,7 @@ done:
 static void *
 H5VL_rados_group_create(void *_item,
     const H5VL_loc_params_t *loc_params, const char *name,
-    hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id, void **req)
+    hid_t lcpl_id, hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id, void **req)
 {
     H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
     H5VL_rados_group_t *grp = NULL;
@@ -2163,12 +2158,12 @@ H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
                 target_grp = NULL;
 
                 /* Encode GCPL */
-                if(H5Pencode(grp->gcpl_id, NULL, &gcpl_size) < 0)
+                if(H5Pencode2(grp->gcpl_id, NULL, &gcpl_size, H5P_DEFAULT) < 0)
                     HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of gcpl");
                 if(NULL == (gcpl_buf = (uint8_t *)malloc(gcpl_size)))
                     HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate buffer for serialized gcpl");
                 gcpl_len = (uint64_t)gcpl_size;
-                if(H5Pencode(grp->gcpl_id, gcpl_buf, &gcpl_size) < 0)
+                if(H5Pencode2(grp->gcpl_id, gcpl_buf, &gcpl_size, H5P_DEFAULT) < 0)
                     HGOTO_ERROR(H5E_SYM, H5E_CANTENCODE, NULL, "can't serialize gcpl");
             } /* end if */
             else {
@@ -3308,11 +3303,11 @@ H5VL_rados_group_create_helper(H5VL_rados_file_t *file, hid_t gcpl_id,
             HGOTO_ERROR(H5E_FILE, H5E_CANTINIT, NULL, "can't write max OID")*/
 
         /* Encode GCPL */
-        if(H5Pencode(gcpl_id, NULL, &gcpl_size) < 0)
+        if(H5Pencode2(gcpl_id, NULL, &gcpl_size, H5P_DEFAULT) < 0)
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of gcpl");
         if(NULL == (gcpl_buf = malloc(gcpl_size)))
             HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate buffer for serialized gcpl");
-        if(H5Pencode(gcpl_id, gcpl_buf, &gcpl_size) < 0)
+        if(H5Pencode2(gcpl_id, gcpl_buf, &gcpl_size, H5P_DEFAULT) < 0)
             HGOTO_ERROR(H5E_SYM, H5E_CANTENCODE, NULL, "can't serialize gcpl");
 
         /* Write internal metadata to group */
