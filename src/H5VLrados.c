@@ -352,9 +352,10 @@ static const H5VL_class_t H5VL_rados_g = {
         NULL                                        /* str to info  */
     },
     {   /* wrap_cls */
-        NULL,                                       /* get_object   */
-        NULL,                                       /* get_wrap_ctx */
-        NULL,                                       /* wrap_object  */
+        NULL,                                       /* get_object    */
+        NULL,                                       /* get_wrap_ctx  */
+        NULL,                                       /* wrap_object   */
+        NULL,                                       /* unwrap_object */
         NULL                                        /* free_wrap_ctx */
     },
     {   /* attribute_cls */
@@ -671,7 +672,7 @@ H5VL_rados_info_free(void *_info)
 static void *
 H5VL_rados_dataset_create(void *_item,
     const H5VL_loc_params_t H5VL_ATTR_UNUSED *loc_params, const char *name,
-    hid_t lcpl_id, hid_t type_id, hid_t space_id,
+    hid_t H5VL_ATTR_UNUSED lcpl_id, hid_t type_id, hid_t space_id,
     hid_t dcpl_id, hid_t dapl_id, hid_t dxpl_id, void **req)
 {
     H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
@@ -2042,7 +2043,8 @@ done:
 static void *
 H5VL_rados_group_create(void *_item,
     const H5VL_loc_params_t *loc_params, const char *name,
-    hid_t lcpl_id, hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id, void **req)
+    hid_t H5VL_ATTR_UNUSED lcpl_id, hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id,
+    void **req)
 {
     H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
     H5VL_rados_group_t *grp = NULL;
