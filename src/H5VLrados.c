@@ -15,7 +15,6 @@
 #include "H5VLrados.h"          /* RADOS plugin                         */
 #include "H5PLextern.h"
 #include "H5VLerror.h"
-#include "H5VLselect.h"
 
 /* External headers needed by this file */
 #ifdef H5VL_RADOS_USE_MOBJECT
@@ -4123,6 +4122,8 @@ H5VL_rados_build_io_op_match(hid_t file_space_id, size_t type_size,
 
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
+    if (!rbuf == !wbuf)
+        HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to use passed buffers");
     assert(!rbuf != !wbuf);
     assert(tot_nelem > 0);
 

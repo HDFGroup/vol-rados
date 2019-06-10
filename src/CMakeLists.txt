@@ -165,7 +165,6 @@ configure_file(
 #------------------------------------------------------------------------------
 set(HDF5_VOL_RADOS_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/H5VLrados.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/H5VLselect.c
 )
 
 #------------------------------------------------------------------------------
