@@ -3787,7 +3787,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
     hsize_t   file_sel_start[H5S_MAX_RANK], file_sel_end[H5S_MAX_RANK];
     hsize_t   mem_sel_start[H5S_MAX_RANK], mem_sel_end[H5S_MAX_RANK];
     hsize_t   start_coords[H5O_LAYOUT_NDIMS], end_coords[H5O_LAYOUT_NDIMS];
-    hsize_t   selection_start_coords[H5O_LAYOUT_NDIMS];
+    hsize_t   selection_start_coords[H5O_LAYOUT_NDIMS] = {0};
     hsize_t   num_sel_points_cast;
     htri_t    space_same_shape = FALSE;
     size_t    info_buf_alloced;
@@ -3803,6 +3803,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
     if ((num_sel_points = H5Sget_select_npoints(file_space_id)) < 0)
         HGOTO_ERROR(H5E_DATASPACE, H5E_BADVALUE, FAIL, "can't get number of points select in dataspace");
 //    H5_CHECKED_ASSIGN(num_sel_points_cast, hsize_t, num_sel_points, hssize_t);
+    num_sel_points_cast = (hsize_t) num_sel_points;
 
     /* Get the chunking information */
     if (H5Pget_chunk(dcpl, H5S_MAX_RANK, chunk_dims) < 0)
@@ -3843,9 +3844,13 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
 
     /* Iterate through each "chunk" in the dataset */
     for (i = 0; num_sel_points_cast;) {
+        htri_t intersect = FALSE;
+
+        if((intersect = H5Shyper_intersect_block(file_space_id, start_coords, end_coords)) < 0)
+            HGOTO_ERROR(H5E_DATASPACE, H5E_BADVALUE, FAIL, "cannot determine intersection");
         /* Check for intersection of file selection and "chunk". If there is
          * an intersection, set up a valid memory and file space for the chunk. */
-        if (TRUE == H5Shyper_intersect_block(file_space_id, start_coords, end_coords)) {
+        if (TRUE == intersect) {
             hssize_t  chunk_mem_space_adjust[H5O_LAYOUT_NDIMS];
             hssize_t  chunk_sel_npoints;
             hid_t     tmp_chunk_fspace_id;
@@ -3905,11 +3910,10 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy memory space");
 
                 /* Release the current selection */
-                // TODO check that part
-//                if (H5S_SELECT_RELEASE(tmp_chunk_mspace_id) < 0) {
-//                    H5Sclose(tmp_chunk_mspace_id);
-//                    HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection");
-//                } /* end if */
+                if (H5Sselect_release(tmp_chunk_mspace_id) < 0) {
+                    H5Sclose(tmp_chunk_mspace_id);
+                    HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection");
+                } /* end if */
 
                 /* Copy the chunk's file space selection to its memory space selection */
                 if (H5Sselect_copy(tmp_chunk_mspace_id, tmp_chunk_fspace_id) < 0) {
