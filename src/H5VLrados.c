@@ -335,11 +335,13 @@ herr_t H5Ssel_iter_close(hid_t sel_iter_id);
 
 /* The RADOS VOL plugin struct */
 static const H5VL_class_t H5VL_rados_g = {
-    H5VL_RADOS_VERSION_MAJOR,                       /* version      */
+    H5VL_VERSION,                                              /* version      */
     H5VL_RADOS_VALUE,                               /* value        */
     H5VL_RADOS_NAME_STRING,                         /* name         */
+#if H5VL_VERSION >= 1
     H5VL_RADOS_VERSION_MAJOR,                       /* connector version */
-    0,                                              /* capability flags */
+#endif
+    H5VL_CAP_FLAG_NONE,                             /* capability flags */
     H5VL_rados_init,                                /* initialize */
     H5VL_rados_term,                                /* terminate */
     {   /* info_cls - may need more here (DER) */
