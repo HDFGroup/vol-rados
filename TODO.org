@@ -11,14 +11,20 @@
 ** H5VL_DATASET_GET_OFFSET, H5VL_FILE_MOUNT, and H5VL_FILE_UNMOUNT cases removed
 ** H5VLis_connector_registered -> H5VLis_connector_registered_by_name
 ** H5VLget_connector_id -> H5VLget_connector_id_by_name
-* TODO More than refactoring
+* DONE More than refactoring
 ** H5Sselect_adjust_u -> H5Sselect_adjust
 *** This causes an issue, as start_coords is now hssize_t instead of hsize_t as in H5Sselect_adjust_u. I suspect this is to accomodate a broader change for H5Sselect to support hyperslab selection
+*** I did a simple but ugly fix, creating a copy with the correct type.
 ** H5Sselect_release -> ?
-*** Replacement candidates seem to be private, unclear what is to be done
+*** Replacement candidate is private, unclear what is to be done
+*** I just removed it, could cause errors.
 ** H5Pget_all_coll_metadata_ops -> ?
-*** This one's a bit strange, it's implemented in H5Pfapl.c, but we don't see that implementation. Wondering if I need to recompile HDF5 with some flag
-** H5Sset_extent_real -> ?
-*** There are replacement candidates, but arguments changed
-* TODO Fix address-based referencing
+*** This one's a bit strange, it's implemented in H5Pfapl.c, and externalized in H5Ppublic.h, but somehow it still isn't known.
+*** I'm leaving the warning in for now in the hope that it doesn't cause issues
+** H5Sset_extent_real -> H5Sset_extent_simple
+*** There are replacement candidates, but arguments changed. I'll attempt replacement with H5Sset_extent_simple
+*** I performed the change, wasn't sure what to do with the max size of dimensions so I set it to NULL which makes it the same size as dims.
+* DONE Fix address-based referencing
 ** H5VL_OBJECT_BY_ADDR and H5VL_loc_params_t.loc_data.loc_by_addr are no longer available, replace with token (or name, or idx) equivalents and modify code to use different method from addrs
+*** I can confirm that the intended replacement is by_token
+*** I've done the replacement, but not yet sure if it will work or not.

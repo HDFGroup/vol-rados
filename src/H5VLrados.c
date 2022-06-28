@@ -890,9 +890,9 @@ H5VL_rados_dataset_open(void *_item,
             must_bcast = TRUE;
 
         /* Check for open by address */
-        if(H5VL_OBJECT_BY_ADDR == loc_params->type) {
+        if(H5VL_OBJECT_BY_TOKEN == loc_params->type) {
             /* Generate oid from address */
-            dset->obj.bin_oid = (uint64_t)loc_params->loc_data.loc_by_addr.addr;
+            dset->obj.bin_oid = *(uint64_t *)loc_params->loc_data.loc_by_token.token;
             if(H5VL_rados_oid_create_string(item->file, dset->obj.bin_oid, &dset->obj.oid) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, NULL, "can't encode string oid");
         } /* end if */
@@ -2148,9 +2148,9 @@ H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
             must_bcast = TRUE;
 
         /* Check for open by address */
-        if(H5VL_OBJECT_BY_ADDR == loc_params->type) {
+        if(H5VL_OBJECT_BY_TOKEN == loc_params->type) {
             /* Generate oid from address */
-            oid = (uint64_t)loc_params->loc_data.loc_by_addr.addr;
+            oid = *(uint64_t *)loc_params->loc_data.loc_by_token.token;
 
             /* Open group */
             if(NULL == (grp = (H5VL_rados_group_t *)H5VL_rados_group_open_helper(item->file, oid, gapl_id, dxpl_id, req, (collective && (item->file->num_procs > 1)) ? (void **)&gcpl_buf : NULL, &gcpl_len)))
@@ -3897,13 +3897,17 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
             } /* end if */
 
             /* Resize chunk's dataspace dimensions to size of chunk */
-            if (H5Sset_extent_real(tmp_chunk_fspace_id, chunk_dims) < 0) {
+            if (H5Sset_extent_simple(tmp_chunk_fspace_id, H5S_MAX_RANK, chunk_dims, NULL) < 0) {
                 H5Sclose(tmp_chunk_fspace_id);
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk dimensions");
             } /* end if */
 
             /* Move selection back to have correct offset in chunk */
-            if (H5Sselect_adjust(tmp_chunk_fspace_id, start_coords) < 0) {
+	    hssize_t sstart_coords [H5O_LAYOUT_NDIMS]; // FIXME this is dirty, just to get it to compile, probably have to think of something more elegant in the long run
+	    for (i = 0; i < H5O_LAYOUT_NDIMS; i++) {
+	      sstart_coords[i] = (hssize_t) start_coords[i];
+	    }
+            if (H5Sselect_adjust(tmp_chunk_fspace_id, sstart_coords) < 0) {
                 H5Sclose(tmp_chunk_fspace_id);
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk selection");
             } /* end if */
@@ -3923,10 +3927,11 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy memory space");
 
                 /* Release the current selection */
-                if (H5Sselect_release(tmp_chunk_mspace_id) < 0) {
-                    H5Sclose(tmp_chunk_mspace_id);
-                    HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection");
-                } /* end if */
+		// FIXME there is a macro called H5S_SELECT_RELEASE, but it's private. I switched to a fairly dirty fix in order to get compilation but in the long run a real fix should be done.
+                /* if (H5Sselect_release(tmp_chunk_mspace_id) < 0) { */
+		H5Sclose(tmp_chunk_mspace_id);
+                /*     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection"); */
+                /* } /\* end if *\/ */
 
                 /* Copy the chunk's file space selection to its memory space selection */
                 if (H5Sselect_copy(tmp_chunk_mspace_id, tmp_chunk_fspace_id) < 0) {
