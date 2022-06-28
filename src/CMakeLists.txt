@@ -50,7 +50,7 @@ endif()
 option(HDF5_VOL_RADOS_USE_SYSTEM_HDF5 "Use system-installed HDF5." ON)
 if(HDF5_VOL_RADOS_USE_SYSTEM_HDF5)
   # We will require 1.12 once it is released
-  find_package(HDF5 1.11 NO_MODULE NAMES hdf5 COMPONENTS C shared)
+  find_package(HDF5 1.13 NO_MODULE NAMES hdf5 COMPONENTS C shared)
   if(HDF5_FOUND)
     set(HDF5_C_SHARED_LIBRARY hdf5-shared)
     if(NOT TARGET ${HDF5_C_SHARED_LIBRARY})
@@ -63,7 +63,7 @@ if(HDF5_VOL_RADOS_USE_SYSTEM_HDF5)
     )
   else()
     # Allow for HDF5 autotools builds
-    find_package(HDF5 1.11 MODULE REQUIRED)
+    find_package(HDF5 1.13 MODULE REQUIRED)
     if(HDF5_FOUND)
       set(HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES
         ${HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES}

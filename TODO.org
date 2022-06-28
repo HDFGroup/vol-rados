@@ -1,0 +1,24 @@
+* DONE Bring H5VL_class_t up to date with 1.13
+** Add empty structs (full of NULL) for items that weren't present in past versions
+** Set minimum version to 1.13 in cmake (develop)
+** Change arguments in H5VL_rados_dataset_get and H5VL_rados_file_specific to match new arguments
+*** These have the same issue where the va_list method of specifying arguments was changed
+*** For H5VL_rados_file_specific, there's an htri_t that was changed to an hbool_t also, I think htri_t is just a 3-value struct approximating a boolean
+* DONE Refactoring
+** H5E_ATOM -> H5E_ID
+** H5Shyper_adjust_s -> H5Sselect_adjust
+** H5Shyper_intersect_block -> H5Sselect_intersect_block
+** H5VL_DATASET_GET_OFFSET, H5VL_FILE_MOUNT, and H5VL_FILE_UNMOUNT cases removed
+** H5VLis_connector_registered -> H5VLis_connector_registered_by_name
+** H5VLget_connector_id -> H5VLget_connector_id_by_name
+* TODO More than refactoring
+** H5Sselect_adjust_u -> H5Sselect_adjust
+*** This causes an issue, as start_coords is now hssize_t instead of hsize_t as in H5Sselect_adjust_u. I suspect this is to accomodate a broader change for H5Sselect to support hyperslab selection
+** H5Sselect_release -> ?
+*** Replacement candidates seem to be private, unclear what is to be done
+** H5Pget_all_coll_metadata_ops -> ?
+*** This one's a bit strange, it's implemented in H5Pfapl.c, but we don't see that implementation. Wondering if I need to recompile HDF5 with some flag
+** H5Sset_extent_real -> ?
+*** There are replacement candidates, but arguments changed
+* TODO Fix address-based referencing
+** H5VL_OBJECT_BY_ADDR and H5VL_loc_params_t.loc_data.loc_by_addr are no longer available, replace with token (or name, or idx) equivalents and modify code to use different method from addrs

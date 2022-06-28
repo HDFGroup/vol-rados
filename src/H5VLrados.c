@@ -226,8 +226,8 @@ static herr_t H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id,
 static herr_t H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id,
     hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, const void *buf,
     void **req);
-static herr_t H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
-    hid_t dxpl_id, void **req, va_list arguments);
+static herr_t H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_args_t *arguments, 
+    hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_dataset_close(void *_dset, hid_t dxpl_id, void **req);
 
 /* Datatype callbacks */
@@ -238,9 +238,8 @@ static void *H5VL_rados_file_create(const char *name, unsigned flags,
     hid_t fcpl_id, hid_t fapl_id, hid_t dxpl_id, void **req);
 static void *H5VL_rados_file_open(const char *name, unsigned flags,
     hid_t fapl_id, hid_t dxpl_id, void **req);
-static herr_t H5VL_rados_file_specific(void *_item,
-    H5VL_file_specific_t specific_type, hid_t dxpl_id, void **req,
-    va_list arguments);
+static herr_t H5VL_rados_file_specific(void *item,
+    H5VL_file_specific_args_t *arguments, hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_file_close(void *_file, hid_t dxpl_id, void **req);
 
 /* Group callbacks */
@@ -339,6 +338,7 @@ static const H5VL_class_t H5VL_rados_g = {
     H5VL_RADOS_VERSION_MAJOR,                       /* version      */
     H5VL_RADOS_VALUE,                               /* value        */
     H5VL_RADOS_NAME_STRING,                         /* name         */
+    H5VL_RADOS_VERSION_MAJOR,                       /* connector version */
     0,                                              /* capability flags */
     H5VL_rados_init,                                /* initialize */
     H5VL_rados_term,                                /* terminate */
@@ -416,6 +416,12 @@ static const H5VL_class_t H5VL_rados_g = {
         NULL,                                       /* specific */
         NULL,                                       /* optional */
     },
+    {
+        /* introspect_cls */
+        NULL,                                       /* get_conn_cls */
+        NULL,                                       /* get_cap_flags */
+	NULL                                        /* opt_query */
+    }, // FIXME untested
     {   /* request_cls */
         NULL,                                       /* wait         */
         NULL,                                       /* notify       */
@@ -424,6 +430,19 @@ static const H5VL_class_t H5VL_rados_g = {
         NULL,                                       /* optional     */
         NULL                                        /* free         */
     },
+    {
+        /* blob_cls */
+        NULL,                                       /* put */
+        NULL,                                       /* get */
+        NULL,                                       /* specific */
+        NULL                                        /* optional */
+    }, // FIXME untested
+    {
+        /* token_cls */
+        NULL,                                       /* cmp */
+        NULL,                                       /* to_str */
+        NULL                                        /* from_str */
+    }, // FIXME untested
     NULL                                            /* optional     */
 };
 
@@ -475,11 +494,11 @@ H5VLrados_init(const char * const id, const char *path, const char *pool_name)
         HGOTO_ERROR(H5E_VOL, H5E_CANTINIT, FAIL, "could not initialize RADOS cluster");
 
     /* Register the RADOS VOL, if it isn't already */
-    if((is_registered = H5VLis_connector_registered(H5VL_rados_g.name)) < 0)
+    if((is_registered = H5VLis_connector_registered_by_name(H5VL_rados_g.name)) < 0)
         HGOTO_ERROR(H5E_VOL, H5E_CANTGET, FAIL, "can't check if VOL connector already registered");
     if(is_registered) {
         /* Retrieve the ID of the already-registered VOL connector */
-        if((H5VL_RADOS_g = H5VLget_connector_id(H5VL_rados_g.name)) < 0)
+        if((H5VL_RADOS_g = H5VLget_connector_id_by_name(H5VL_rados_g.name)) < 0)
             HGOTO_ERROR(H5E_VOL, H5E_CANTGET, FAIL, "can't get VOL connector ID");
     } else {
         /* Register the VOL connector */
@@ -1551,17 +1570,17 @@ done:
 
 /*---------------------------------------------------------------------------*/
 herr_t
-H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type, 
-    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req, va_list arguments)
+H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_args_t *arguments, 
+    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req)
 {
     H5VL_rados_dset_t *dset = (H5VL_rados_dset_t *)_dset;
 
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
-    switch (get_type) {
+    switch (arguments->op_type) {
         case H5VL_DATASET_GET_DCPL:
             {
-                hid_t *plist_id = va_arg(arguments, hid_t *);
+                hid_t *plist_id = &(arguments->args.get_dcpl.dcpl_id);
 
                 /* Retrieve the dataset's creation property list */
                 if((*plist_id = H5Pcopy(dset->dcpl_id)) < 0)
@@ -1571,7 +1590,7 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
             } /* end block */
         case H5VL_DATASET_GET_DAPL:
             {
-                hid_t *plist_id = va_arg(arguments, hid_t *);
+	        hid_t *plist_id = &(arguments->args.get_dapl.dapl_id);
 
                 /* Retrieve the dataset's access property list */
                 if((*plist_id = H5Pcopy(dset->dapl_id)) < 0)
@@ -1581,7 +1600,7 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
             } /* end block */
         case H5VL_DATASET_GET_SPACE:
             {
-                hid_t *ret_id = va_arg(arguments, hid_t *);
+	        hid_t *ret_id = &(arguments->args.get_space.space_id);
 
                 /* Retrieve the dataset's dataspace */
                 if((*ret_id = H5Scopy(dset->space_id)) < 0)
@@ -1590,7 +1609,7 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
             } /* end block */
         case H5VL_DATASET_GET_SPACE_STATUS:
             {
-                H5D_space_status_t *allocation = va_arg(arguments, H5D_space_status_t *);
+                H5D_space_status_t *allocation = arguments->args.get_space_status.status;
 
                 /* Retrieve the dataset's space status */
                 *allocation = H5D_SPACE_STATUS_NOT_ALLOCATED;
@@ -1598,7 +1617,7 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
             } /* end block */
         case H5VL_DATASET_GET_TYPE:
             {
-                hid_t *ret_id = va_arg(arguments, hid_t *);
+	        hid_t *ret_id = &(arguments->args.get_type.type_id);
 
                 /* Retrieve the dataset's datatype */
                 if((*ret_id = H5Tcopy(dset->type_id)) < 0)
@@ -1606,7 +1625,6 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
                 break;
             } /* end block */
         case H5VL_DATASET_GET_STORAGE_SIZE:
-        case H5VL_DATASET_GET_OFFSET:
         default:
             HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "can't get this type of information from dataset");
     } /* end switch */
@@ -1919,7 +1937,7 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
      * Point to it. */
     file->fcpl_id = file->root_grp->gcpl_id;
     if(H5Iinc_ref(file->fcpl_id) < 0)
-        HGOTO_ERROR(H5E_ATOM, H5E_CANTINC, NULL, "can't increment FCPL ref count");
+        HGOTO_ERROR(H5E_ID, H5E_CANTINC, NULL, "can't increment FCPL ref count");
 
     /* Free info */
     if(info && H5VL_rados_info_free(info) < 0)
@@ -1957,13 +1975,12 @@ done:
 
 /*---------------------------------------------------------------------------*/
 static herr_t
-H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
-    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req,
-    va_list H5VL_ATTR_UNUSED arguments)
+H5VL_rados_file_specific(void *item, H5VL_file_specific_args_t *arguments,
+    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req)
 {
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
-    switch (specific_type) {
+    switch (arguments->op_type) {
         /* H5Fflush` */
         case H5VL_FILE_FLUSH:
         {
@@ -1977,9 +1994,9 @@ H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
         /* H5Fis_accessible */
         case H5VL_FILE_IS_ACCESSIBLE:
         {
-            hid_t       fapl_id = va_arg(arguments, hid_t);
-            const char *name    = va_arg(arguments, const char *);
-            htri_t     *ret     = va_arg(arguments, htri_t *);
+            hid_t       fapl_id = arguments->args.is_accessible.fapl_id;
+            const char *name    = arguments->args.is_accessible.filename;
+            hbool_t     *ret     = arguments->args.is_accessible.accessible;
             char       *glob_md_oid = NULL;
             uint64_t    gcpl_len = 0;
             time_t      pmtime;
@@ -2003,10 +2020,6 @@ H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
             break;
         }
 
-        /* H5Fmount */
-        case H5VL_FILE_MOUNT:
-        /* H5Fmount */
-        case H5VL_FILE_UNMOUNT:
         case H5VL_FILE_REOPEN:
         default:
             HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "invalid or unsupported specific operation");
@@ -3846,7 +3859,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
     for (i = 0; num_sel_points_cast;) {
         htri_t intersect = FALSE;
 
-        if((intersect = H5Shyper_intersect_block(file_space_id, start_coords, end_coords)) < 0)
+        if((intersect = H5Sselect_intersect_block(file_space_id, start_coords, end_coords)) < 0)
             HGOTO_ERROR(H5E_DATASPACE, H5E_BADVALUE, FAIL, "cannot determine intersection");
         /* Check for intersection of file selection and "chunk". If there is
          * an intersection, set up a valid memory and file space for the chunk. */
@@ -3890,7 +3903,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
             } /* end if */
 
             /* Move selection back to have correct offset in chunk */
-            if (H5Sselect_adjust_u(tmp_chunk_fspace_id, start_coords) < 0) {
+            if (H5Sselect_adjust(tmp_chunk_fspace_id, start_coords) < 0) {
                 H5Sclose(tmp_chunk_fspace_id);
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk selection");
             } /* end if */
@@ -3928,7 +3941,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
                 } /* end for */
 
                 /* Adjust the selection */
-                if (H5Shyper_adjust_s(tmp_chunk_mspace_id, chunk_mem_space_adjust) < 0) {
+                if (H5Sselect_adjust(tmp_chunk_mspace_id, chunk_mem_space_adjust) < 0) {
                     H5Sclose(tmp_chunk_mspace_id);
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk memory space selection");
                 } /* end if */
