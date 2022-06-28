@@ -1,7 +1,7 @@
 # RADOS VOL
 
 ## Dependencies
-- HDF5
+- (parallel) HDF5
 - MPI
 and
 either Mobject or Rados
@@ -15,19 +15,33 @@ if Rados:
 - Ceph
 - librados
 
-## Commands
+## Build Commands
+For all of these, you want to run make after, for HDF5 you may want to make install also.
+
 ### Build with Rados instead of MObject (MObject is default)
 `mkdir build; cd build`
 `cmake .. -DHDF5_VOL_RADOS_USE_MOBJECT=OFF`
+
+### Building HDF5
+`cmake -DHDF5_ENABLE_PARALLEL=ON ..`
+
+### Building vol tests
+`cmake -DCMAKE_BUILD_TYPE:STRING=Release -DHDF5_VOL_TEST_ENABLE_PARALLEL=ON ..`
+
+It's worth pointing out that HDF5 itself does not do any initialization of MPI, which means this is entirely up to the client program. The rados vol connector does require MPI to be initialized somewhere in order to function. Since our client program in this case is the vol tests, we need to make sure we enforce the vol tests using parallel HDF5, and the enable parallel is how we do that.
 
 ## Environment Variables
 There are some environment variables which must be set in order to use the Ceph rados vol connector, related to connecting to rados
 
 HDF5_RADOS_ID = admin
 HDF5_RADOS_CONF = /etc/ceph/ceph.conf
-HDF5_RADOS_POOL = ?
+HDF5_RADOS_POOL = data
 
 Also see https://docs.ceph.com/en/latest/rados/api/librados-intro/ for more info about librados
+
+For testing
+HDF5_VOL_CONNECTOR=rados
+HDF5_PLUGIN_PATH=/home/kbateman/vol-rados/build/bin/
 
 ## Setting up Ceph
 
@@ -66,3 +80,6 @@ All commands from Ceph have to be run as root. That includes "ceph" and "cephadm
 Also, note that "ceph status" will tell you the status of the cluster. It's generally useful. Unlike compiler warnings, "HEALTH_WARN" in this case means something is definitely wrong.
 
 If you mess something up, you might need or want to unlink the old Ceph stuff so you aren't running broken Ceph monitors or something. I don't know of a sure way to do this, but I can tell you where to look for the Ceph services so that you can "systemctl disable" them. Most of them are in "/etc/systemd/system/multi-user.target.wants/" in Ubuntu, all with "ceph" in their name. There was also some stuff in "/etc/systemd/system/".
+
+We also have to create a pool so that we can use our Ceph installation with Rados.
+`ceph osd pool create data 1 1 replicated`

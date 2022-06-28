@@ -249,6 +249,12 @@ static void *H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_par
     const char *name, hid_t gapl_id, hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_group_close(void *_grp, hid_t dxpl_id, void **req);
 
+/* Introspection callbacks */
+static herr_t H5_rados_get_conn_cls(void *item, H5VL_get_conn_lvl_t lvl, const H5VL_class_t **conn_cls);
+static herr_t H5_rados_get_cap_flags(const void *info, unsigned *cap_flags);
+static herr_t H5_rados_opt_query(void *item, H5VL_subclass_t cls, int opt_type,
+				 uint64_t *supported);
+
 /* Link callbacks */
 /* TODO */
 
@@ -420,10 +426,10 @@ static const H5VL_class_t H5VL_rados_g = {
     },
     {
         /* introspect_cls */
-        NULL,                                       /* get_conn_cls */
-        NULL,                                       /* get_cap_flags */
-	NULL                                        /* opt_query */
-    }, // FIXME untested
+        H5_rados_get_conn_cls,                      /* get_conn_cls */
+        H5_rados_get_cap_flags,                     /* get_cap_flags */
+	H5_rados_opt_query                          /* opt_query */
+    },
     {   /* request_cls */
         NULL,                                       /* wait         */
         NULL,                                       /* notify       */
@@ -2316,6 +2322,60 @@ H5VL_rados_group_close(void *_grp, hid_t H5VL_ATTR_UNUSED dxpl_id,
     FUNC_LEAVE_VOL
 }
 
+/* Introspection routines */
+static herr_t
+H5_rados_get_conn_cls(void *item, H5VL_get_conn_lvl_t H5VL_ATTR_UNUSED lvl, const H5VL_class_t **conn_cls)
+{
+  FUNC_ENTER_VOL(herr_t, SUCCEED)
+    
+  if (!item)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "item parameter not supplied");
+  if (!conn_cls)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "conn_cls parameter not supplied");
+
+  *conn_cls = &H5VL_rados_g;
+
+ done:
+  FUNC_LEAVE_VOL
+}
+
+static herr_t
+H5_rados_get_cap_flags(const void H5VL_ATTR_UNUSED *info, unsigned *cap_flags)
+{
+  FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+  if (!cap_flags)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "invalid cap_flags parameter");
+
+  *cap_flags = H5VL_rados_g.cap_flags;
+
+ done:
+  FUNC_LEAVE_VOL
+}
+
+static herr_t
+H5_rados_opt_query(void *item, H5VL_subclass_t H5VL_ATTR_UNUSED cls, int opt_type,
+		   uint64_t *supported)
+{
+  FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+  if (!item)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "\"item\" parameter not supplied");
+  if (!supported)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "output parameter not supplied");
+
+  switch(opt_type) {
+  default: {
+    // Currently, we don't claim to support anything
+    *supported = 0;
+    break;
+  }
+  }
+
+ done:
+  FUNC_LEAVE_VOL
+}
+
 /**
  * -------------------------------------------------------------------------
  * -------------------------------------------------------------------------
@@ -3929,9 +3989,9 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy memory space");
 
                 /* Release the current selection */
-		// FIXME there is a macro called H5S_SELECT_RELEASE, but it's private. I switched to a fairly dirty fix in order to get compilation but in the long run a real fix should be done.
+		//  This shouldn't be necessary any more, release is done inside of copy now
                 /* if (H5Sselect_release(tmp_chunk_mspace_id) < 0) { */
-		H5Sclose(tmp_chunk_mspace_id);
+		/*   H5Sclose(tmp_chunk_mspace_id); */
                 /*     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection"); */
                 /* } /\* end if *\/ */
 

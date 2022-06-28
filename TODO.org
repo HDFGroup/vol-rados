@@ -28,3 +28,27 @@
 ** H5VL_OBJECT_BY_ADDR and H5VL_loc_params_t.loc_data.loc_by_addr are no longer available, replace with token (or name, or idx) equivalents and modify code to use different method from addrs
 *** I can confirm that the intended replacement is by_token
 *** I've done the replacement, but not yet sure if it will work or not.
+* DONE Create introspection functions
+** These are new functions which seem important, modeling them off of the daos ones
+** I've created these, may need to return later to modify them (especially opt_query)
+* TODO Investigate unsupported or failing features
+** Failing
+*** file_specific
+**** Seems like reopen specifically isn't supported in current version so we can ignore those failures for now
+*** group_create
+**** Some of this is anonymous not being supported, that was there before so we can ignore it for now
+**** It doesn't seem to be just that, but it's difficult to tell exactly what the issue is
+*** dataset_create
+**** This seems to be just anon dataset creation
+*** dataset_write
+**** Something where it can't select properly
+** Unsupported
+*** Implement file_get
+*** link_create
+*** link_specific
+*** object_specific
+*** datatype_commit
+*** attr_create
+*** object_copy
+*** object_open
+*** etc. (there are a lot of unsupported things)
