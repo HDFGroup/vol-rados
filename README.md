@@ -36,6 +36,7 @@ There are some environment variables which must be set in order to use the Ceph 
 HDF5_RADOS_ID = admin
 HDF5_RADOS_CONF = /etc/ceph/ceph.conf
 HDF5_RADOS_POOL = data
+MOBJECT_CLUSTER_FILE=/home/kbateman/mobject/mobject.ssg
 
 Also see https://docs.ceph.com/en/latest/rados/api/librados-intro/ for more info about librados
 

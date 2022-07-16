@@ -52,3 +52,19 @@
 *** object_copy
 *** object_open
 *** etc. (there are a lot of unsupported things)
+* Something is failing when writing to datasets with multiple chunks
+** Testing write to dataset with multiple chunks using same shaped dataspaces
+** H5Sget_simple_extent_npoints gives not a dataspace at line 1448
+** Lots of similar things give similar errors here
+* Issues with small reads
+** Testing small read from dataset with H5S_ALL gives "couldn't read from dataset 'dataset_small_read_all_dset'" due to line 1216 giving a "no such file or directory" error
+** Testing small read from dataset with a hyperslab selection
+** Testing small read from dataset with a point selection
+** These are all small read tests, so there is an issue with the small reads
+** Testing write to dataset with one rank selecting 0 rows encounters same issue
+** Testing write to dataset with one rank using 'none' selection
+** examples of failing chunk_oid values
+*** 02vol_test_parallel.h5400000000000001100000000000000000000000000000000
+*** 03vol_test.h540000000000001AA000000000000000000000000000000000000000000000000
+** This is a weird one, H5VL_rados_oid_create_chunk is not calling any rados calls to create chunk_oid object, but then there's a read_op_operate on chunk_oid in spite of that
+*** I think this might be related to mobject, as there's an mobject mapping which does this thing by default

@@ -3959,7 +3959,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
             } /* end if */
 
             /* Resize chunk's dataspace dimensions to size of chunk */
-            if (H5Sset_extent_simple(tmp_chunk_fspace_id, H5S_MAX_RANK, chunk_dims, NULL) < 0) {
+	    if (H5Sset_extent_simple(tmp_chunk_fspace_id, fspace_ndims, chunk_dims, NULL) < 0) {
                 H5Sclose(tmp_chunk_fspace_id);
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk dimensions");
             } /* end if */
