@@ -238,6 +238,8 @@ static void *H5VL_rados_file_create(const char *name, unsigned flags,
     hid_t fcpl_id, hid_t fapl_id, hid_t dxpl_id, void **req);
 static void *H5VL_rados_file_open(const char *name, unsigned flags,
     hid_t fapl_id, hid_t dxpl_id, void **req);
+static herr_t H5VL_rados_file_get(void *_item, H5VL_file_get_args_t *get_args,
+    hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_file_specific(void *item,
     H5VL_file_specific_args_t *arguments, hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_file_close(void *_file, hid_t dxpl_id, void **req);
@@ -396,7 +398,7 @@ static const H5VL_class_t H5VL_rados_g = {
     {   /* file_cls */
         H5VL_rados_file_create,                     /* create */
         H5VL_rados_file_open,                       /* open */
-        NULL,                                       /* get */
+        H5VL_rados_file_get,                        /* get */
         H5VL_rados_file_specific,                   /* specific */
         NULL,                                       /* optional */
         H5VL_rados_file_close                       /* close */
@@ -1983,6 +1985,96 @@ done:
 
 /*---------------------------------------------------------------------------*/
 static herr_t
+H5VL_rados_file_get(void *_item, H5VL_file_get_args_t *get_args, hid_t H5VL_ATTR_UNUSED dxpl_id,
+		 void H5VL_ATTR_UNUSED **req)
+{
+  H5VL_rados_item_t *item      = (H5VL_rados_item_t *)_item;
+  H5VL_rados_file_t *file    = NULL;
+  /* herr_t          ret_value = SUCCEED; */
+
+  FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+  if (!_item)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "VOL object is NULL");
+  if (!get_args)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "Invalid operation arguments");
+
+  if (get_args->op_type == H5VL_FILE_GET_NAME) {
+    file = item->file;
+
+    if (H5I_FILE != item->type && H5I_GROUP != item->type && H5I_DATATYPE != item->type &&
+	H5I_DATASET != item->type && H5I_ATTR != item->type)
+      HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
+		   "object is not a file, group, datatype, dataset or attribute");
+  }
+  else {
+    file = (H5VL_rados_file_t *)item;
+    if (H5I_FILE != file->item.type)
+      HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "object is not a file");
+  }
+
+  switch (get_args->op_type) {
+    /* H5Fget_access_plist */
+  case H5VL_FILE_GET_FAPL: {
+    hid_t *ret_id = &get_args->args.get_fapl.fapl_id;
+
+    if ((*ret_id = H5Pcopy(file->fapl_id)) < 0)
+      HGOTO_ERROR(H5E_PLIST, H5E_CANTCOPY, FAIL, "can't get file's FAPL");
+
+    break;
+  } /* H5VL_FILE_GET_FAPL */
+
+    /* H5Fget_create_plist */
+  case H5VL_FILE_GET_FCPL: {
+    hid_t *ret_id = &get_args->args.get_fcpl.fcpl_id;
+
+    if ((*ret_id = H5Pcopy(file->fcpl_id)) < 0)
+      HGOTO_ERROR(H5E_PLIST, H5E_CANTCOPY, FAIL, "can't get file's FCPL");
+
+    break;
+  } /* H5VL_FILE_GET_FCPL */
+
+    /* H5Fget_intent */
+  case H5VL_FILE_GET_INTENT: {
+    unsigned *ret_intent = get_args->args.get_intent.flags;
+
+    if ((file->flags & H5F_ACC_RDWR) == H5F_ACC_RDWR)
+      *ret_intent = H5F_ACC_RDWR;
+    else
+      *ret_intent = H5F_ACC_RDONLY;
+
+    break;
+  } /* H5VL_FILE_GET_INTENT */
+
+    /* H5Fget_name */
+  case H5VL_FILE_GET_NAME: {
+    H5I_type_t obj_type      = get_args->args.get_name.type;
+    size_t     name_buf_size = get_args->args.get_name.buf_size;
+    char *     name_buf      = get_args->args.get_name.buf;
+    size_t *   ret_size      = get_args->args.get_name.file_name_len;
+
+    if (H5I_FILE != obj_type)
+      file = file->item.file;
+
+    *ret_size = strlen(file->file_name);
+
+    if (name_buf) {
+      strncpy(name_buf, file->file_name, name_buf_size - 1);
+      name_buf[name_buf_size - 1] = '\0';
+    } /* end if */
+
+    break;
+  } /* H5VL_FILE_GET_NAME */
+
+  default:
+    HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "invalid or unsupported file get operation");
+  } /* end switch */
+
+ done:
+  FUNC_LEAVE_VOL
+} /* end H5_rados_file_get() */
+
+static herr_t
 H5VL_rados_file_specific(void *item, H5VL_file_specific_args_t *arguments,
     hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req)
 {
@@ -2029,6 +2121,19 @@ H5VL_rados_file_specific(void *item, H5VL_file_specific_args_t *arguments,
         }
 
         case H5VL_FILE_REOPEN:
+        /* { */
+	/*   H5VL_rados_file_t *file = ((H5VL_rados_item_t *)item)->file; */
+	/*   unsigned reopen_flags = file->flags; */
+	/*   void **  ret_file     = arguments->args.reopen.file; */
+
+	/*   /\* Strip any file creation-related flags *\/ */
+	/*   reopen_flags &= ~(H5F_ACC_TRUNC | H5F_ACC_EXCL | H5F_ACC_CREAT); */
+	/*   if (NULL == */
+	/*       (*ret_file = H5VL_rados_file_open(file->file_name, reopen_flags, file->fapl_id, dxpl_id, req))) */
+	/*     HGOTO_ERROR(H5E_FILE, H5E_CANTOPENOBJ, FAIL, "can't reopen file"); */
+
+	/*   break; */
+	/* } */
         default:
             HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "invalid or unsupported specific operation");
     } /* end switch */
