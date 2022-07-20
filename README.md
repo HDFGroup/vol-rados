@@ -80,7 +80,7 @@ All commands from Ceph have to be run as root. That includes "ceph" and "cephadm
 
 Also, note that "ceph status" will tell you the status of the cluster. It's generally useful. Unlike compiler warnings, "HEALTH_WARN" in this case means something is definitely wrong.
 
-If you mess something up, you might need or want to unlink the old Ceph stuff so you aren't running broken Ceph monitors or something. I don't know of a sure way to do this, but I can tell you where to look for the Ceph services so that you can "systemctl disable" them. Most of them are in "/etc/systemd/system/multi-user.target.wants/" in Ubuntu, all with "ceph" in their name. There was also some stuff in "/etc/systemd/system/".
+If you mess something up, you might need or want to unlink the old Ceph stuff so you aren't running broken Ceph monitors or something. Most Ceph services are in "/etc/systemd/system/multi-user.target.wants/" or "/etc/systemd/system/" in Ubuntu, all with "ceph" in their name. If you want to destroy a Ceph installation, you should do "cephadm rm-cluster --fsid <fsid>", and follow it up by calling "lvremove" on the logical volumes you created for OSDs. Another command I found useful in this regard was "ceph-volume lvm zap </dev/whatever>", which clears the data on a drive (you need this and lvremove if you want to make a drive that was previously used for an OSD usable again).
 
 We also have to create a pool so that we can use our Ceph installation with Rados.
 `ceph osd pool create data 1 1 replicated`
