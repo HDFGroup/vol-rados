@@ -35,6 +35,7 @@
 #define H5VL_RADOS_LINK_VAL_BUF_SIZE    256
 #define H5VL_RADOS_GINFO_BUF_SIZE       256
 #define H5VL_RADOS_DINFO_BUF_SIZE       1024
+#define H5VL_RADOS_TINFO_BUF_SIZE       1024
 #define H5VL_RADOS_SEQ_LIST_LEN         128
 
 /* Definitions for building oids */
@@ -231,7 +232,13 @@ static herr_t H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_args_t *argum
 static herr_t H5VL_rados_dataset_close(void *_dset, hid_t dxpl_id, void **req);
 
 /* Datatype callbacks */
-/* TODO */
+static void *H5VL_rados_datatype_commit(void *_item,
+    const H5VL_loc_params_t *loc_params, const char *name,
+    hid_t type_id, hid_t lcpl_id,
+    hid_t tcpl_id, hid_t tapl_id, hid_t dxpl_id, void **req);
+static void *H5VL_rados_datatype_open(void *_item, const H5VL_loc_params_t *loc_params,
+    const char *name, hid_t tapl_id, hid_t dxpl_id, void **req);
+static herr_t H5VL_rados_datatype_close(void *_dtype, hid_t dxpl_id, void **req);
 
 /* File callbacks */
 static void *H5VL_rados_file_create(const char *name, unsigned flags,
@@ -388,12 +395,12 @@ static const H5VL_class_t H5VL_rados_g = {
         H5VL_rados_dataset_close                    /* close */
     },
     {   /* datatype_cls */
-        NULL,                                       /* commit */
-        NULL,                                       /* open */
+        H5VL_rados_datatype_commit,                 /* commit */
+        H5VL_rados_datatype_open,                   /* open */
         NULL,                                       /* get */
         NULL,                                       /* specific */
         NULL,                                       /* optional */
-        NULL,                                       /* close */
+        H5VL_rados_datatype_close,                  /* close */
     },
     {   /* file_cls */
         H5VL_rados_file_create,                     /* create */
@@ -716,7 +723,7 @@ H5VL_rados_dataset_create(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "dataset name is NULL");
 
@@ -768,7 +775,7 @@ H5VL_rados_dataset_create(void *_item,
         if(H5Tencode(type_id, NULL, &type_size) < 0)
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of datatype");
         if(H5Sencode2(space_id, NULL, &space_size, H5P_DEFAULT) < 0)
-            HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of dataaspace");
+            HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of dataspace");
         if(H5Pencode2(dcpl_id, NULL, &dcpl_size, H5P_DEFAULT) < 0)
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of dcpl");
         md_size = (3 * sizeof(uint64_t)) + type_size + space_size + dcpl_size;
@@ -789,7 +796,7 @@ H5VL_rados_dataset_create(void *_item,
 
         /* Encode dataspace */
         if(H5Sencode2(space_id, md_buf + (3 * sizeof(uint64_t)) + type_size, &space_size, H5P_DEFAULT) < 0)
-            HGOTO_ERROR(H5E_DATASET, H5E_CANTENCODE, NULL, "can't serialize dataaspace");
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTENCODE, NULL, "can't serialize dataspace");
 
         /* Encode DCPL */
         if(H5Pencode2(dcpl_id, md_buf + (3 * sizeof(uint64_t)) + type_size + space_size, &dcpl_size, H5P_DEFAULT) < 0)
@@ -870,7 +877,7 @@ H5VL_rados_dataset_open(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "dataset name is NULL");
 
@@ -1673,6 +1680,369 @@ H5VL_rados_dataset_close(void *_dset, hid_t H5VL_ATTR_UNUSED dxpl_id,
 
 /*---------------------------------------------------------------------------*/
 static void *
+H5VL_rados_datatype_commit(void *_item,
+    const H5VL_loc_params_t H5VL_ATTR_UNUSED *loc_params, const char *name,
+    hid_t type_id, hid_t H5VL_ATTR_UNUSED lcpl_id,
+    hid_t tcpl_id, hid_t tapl_id, hid_t dxpl_id, void **req)
+{
+    H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
+    H5VL_rados_dtype_t *dtype = NULL;
+    H5VL_rados_group_t *target_grp = NULL;
+    uint8_t *md_buf = NULL;
+    hbool_t collective = item->file->collective;
+    int ret;
+
+    FUNC_ENTER_VOL(void *, NULL)
+
+    if(!_item)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
+    if(!loc_params)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
+    /* TODO currently does not support anonymous */
+    if(!name)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "datatype name is NULL");
+
+    /* Check for write access */
+    if(!(item->file->flags & H5F_ACC_RDWR))
+        HGOTO_ERROR(H5E_FILE, H5E_BADVALUE, NULL, "no write intent on file");
+ 
+    /* Check for collective access, if not already set by the file */
+    if(!collective)
+        if(H5Pget_all_coll_metadata_ops(tapl_id, &collective) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, NULL, "can't get collective access property");
+
+    /* Allocate the datatype object that is returned to the user */
+    if(NULL == (dtype = malloc(sizeof(H5VL_rados_dtype_t))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate RADOS datatype struct");
+    memset(dtype, 0, sizeof(H5VL_rados_dtype_t));
+    dtype->obj.item.type = H5I_DATATYPE;
+    dtype->obj.item.file = item->file;
+    dtype->obj.item.rc = 1;
+    dtype->type_id = FAIL;
+    dtype->tcpl_id = FAIL;
+    dtype->tapl_id = FAIL;
+
+    /* Generate datatype oid */
+    if(H5VL_rados_oid_create(item->file, item->file->max_oid + (uint64_t)1, H5I_DATATYPE, &dtype->obj.bin_oid, &dtype->obj.oid) < 0)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't generate datatype oid");
+
+    /* Update max_oid */
+    item->file->max_oid = H5VL_rados_oid_to_idx(dtype->obj.bin_oid);
+
+    /* Create datatype and write metadata if this process should */
+    if(!collective || (item->file->my_rank == 0)) {
+        const char *target_name = NULL;
+        H5VL_rados_link_val_t link_val;
+        uint8_t *p;
+        size_t type_size = 0;
+        size_t tcpl_size = 0;
+        size_t md_size = 0;
+
+        /* Traverse the path */
+        if(NULL == (target_grp = H5VL_rados_group_traverse_const(item, name, dxpl_id, req, &target_name, NULL, NULL)))
+            HGOTO_ERROR(H5E_DATATYPE, H5E_BADITER, NULL, "can't traverse path");
+
+        /* Create datatype */
+
+        /* Determine buffer sizes */
+        if(H5Tencode(type_id, NULL, &type_size) < 0)
+            HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of datatype");
+        if(H5Pencode2(tcpl_id, NULL, &tcpl_size, H5P_DEFAULT) < 0)
+            HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of tcpl");
+        md_size = (3 * sizeof(uint64_t)) + type_size + tcpl_size;
+
+        /* Allocate metadata buffer */
+        if(NULL == (md_buf = (uint8_t *)malloc(md_size)))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate buffer for constant metadata");
+
+        /* Encode info lengths */
+        p = md_buf;
+        UINT64ENCODE(p, (uint64_t)type_size);
+        UINT64ENCODE(p, (uint64_t)tcpl_size);
+
+        /* Encode datatype */
+        if(H5Tencode(type_id, md_buf + (3 * sizeof(uint64_t)), &type_size) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTENCODE, NULL, "can't serialize datatype");
+
+        /* Encode TCPL */
+        if(H5Pencode2(tcpl_id, md_buf + (3 * sizeof(uint64_t)) + type_size, &tcpl_size, H5P_DEFAULT) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTENCODE, NULL, "can't serialize tcpl");
+
+        /* Write internal metadata to datatype */
+        if((ret = H5VL_rados_write_full(H5VL_rados_params_g.rados_ioctx, dtype->obj.oid, (const char *)md_buf, md_size)) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't write metadata to datatype: %s", strerror(-ret));
+
+        /* Mark max OID as dirty */
+        item->file->max_oid_dirty = TRUE;
+
+        /* Create link to datatype */
+        link_val.type = H5L_TYPE_HARD;
+        link_val.target.hard = dtype->obj.bin_oid;
+        if(H5VL_rados_link_write(target_grp, target_name, &link_val) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't create link to datatype");
+    } /* end if */
+
+    /* Finish setting up datatype struct */
+    if((dtype->type_id = H5Tcopy(type_id)) < 0)
+        HGOTO_ERROR(H5E_SYM, H5E_CANTCOPY, NULL, "failed to copy datatype");
+    if((dtype->tcpl_id = H5Pcopy(tcpl_id)) < 0)
+        HGOTO_ERROR(H5E_SYM, H5E_CANTCOPY, NULL, "failed to copy tcpl");
+    if((dtype->tapl_id = H5Pcopy(tapl_id)) < 0)
+        HGOTO_ERROR(H5E_SYM, H5E_CANTCOPY, NULL, "failed to copy tapl");
+
+    /* Set return value */
+    FUNC_RETURN_SET((void *)dtype);
+
+done:
+    /* Close target group */
+    if(target_grp && H5VL_rados_group_close(target_grp, dxpl_id, req) < 0)
+        HDONE_ERROR(H5E_DATATYPE, H5E_CLOSEERROR, NULL, "can't close group");
+
+    /* Cleanup on failure */
+    /* Destroy RADOS object if created before failure DSMINC */
+    if(FUNC_ERRORED)
+        /* Close datatype */
+        if(dtype && H5VL_rados_datatype_close(dtype, dxpl_id, req) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CLOSEERROR, NULL, "can't close datatype");
+
+    /* Free memory */
+    free(md_buf);
+
+    FUNC_LEAVE_VOL
+}
+
+static void *
+H5VL_rados_datatype_open(void *_item,
+    const H5VL_loc_params_t H5VL_ATTR_UNUSED *loc_params, const char *name,
+    hid_t tapl_id, hid_t dxpl_id, void **req)
+{
+    H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
+    H5VL_rados_dtype_t *dtype = NULL;
+    H5VL_rados_group_t *target_grp = NULL;
+    const char *target_name = NULL;
+    uint64_t type_len = 0;
+    uint64_t tcpl_len = 0;
+    time_t pmtime = 0;
+    uint8_t tinfo_buf_static[H5VL_RADOS_TINFO_BUF_SIZE];
+    uint8_t *tinfo_buf_dyn = NULL;
+    uint8_t *tinfo_buf = tinfo_buf_static;
+    uint8_t *p;
+    hbool_t collective = item->file->collective;
+    hbool_t must_bcast = FALSE;
+    int ret;
+
+    FUNC_ENTER_VOL(void *, NULL)
+ 
+    if(!_item)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
+    if(!loc_params)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
+    /* TODO currently does not support anonymous */
+    if(!name)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "datatype name is NULL");
+
+    /* Check for collective access, if not already set by the file */
+    if(!collective)
+        if(H5Pget_all_coll_metadata_ops(tapl_id, &collective) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, NULL, "can't get collective access property");
+
+    /* Allocate the datatype object that is returned to the user */
+    if(NULL == (dtype = malloc(sizeof(H5VL_rados_dtype_t))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate RADOS datatype struct");
+    memset(dtype, 0, sizeof(H5VL_rados_dtype_t));
+    dtype->obj.item.type = H5I_DATATYPE;
+    dtype->obj.item.file = item->file;
+    dtype->obj.item.rc = 1;
+    dtype->type_id = FAIL;
+    dtype->tcpl_id = FAIL;
+    dtype->tapl_id = FAIL;
+
+    /* Check if we're actually opening the group or just receiving the datatype
+     * info from the leader */
+    if(!collective || (item->file->my_rank == 0)) {
+        uint64_t md_len = 0;
+
+        if(collective && (item->file->num_procs > 1))
+            must_bcast = TRUE;
+
+        /* Check for open by address */
+        if(H5VL_OBJECT_BY_TOKEN == loc_params->type) {
+            /* Generate oid from address */
+            dtype->obj.bin_oid = *(uint64_t *)loc_params->loc_data.loc_by_token.token;
+            if(H5VL_rados_oid_create_string(item->file, dtype->obj.bin_oid, &dtype->obj.oid) < 0)
+                HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't encode string oid");
+        } /* end if */
+        else {
+            /* Open using name parameter */
+            /* Traverse the path */
+            if(NULL == (target_grp = H5VL_rados_group_traverse_const(item, name, dxpl_id, req, &target_name, NULL, NULL)))
+                HGOTO_ERROR(H5E_DATATYPE, H5E_BADITER, NULL, "can't traverse path");
+
+            /* Follow link to datatype */
+            if(H5VL_rados_link_follow(target_grp, target_name, dxpl_id, req, &dtype->obj.bin_oid) < 0)
+                HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't follow link to datatype");
+
+            /* Create string oid */
+            if(H5VL_rados_oid_create_string(item->file, dtype->obj.bin_oid, &dtype->obj.oid) < 0)
+                HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't encode string oid");
+        } /* end else */
+
+        /* Get the object size and time */
+        if((ret = H5VL_rados_stat(H5VL_rados_params_g.rados_ioctx, dtype->obj.oid, &md_len, &pmtime)) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, NULL, "can't read metadata size from group: %s", strerror(-ret));
+
+        /* Check for metadata not found */
+        if(md_len == (uint64_t)0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_NOTFOUND, NULL, "internal metadata not found");
+
+        /* Allocate dynamic buffer if necessary */
+        if(md_len + sizeof(uint64_t) > sizeof(tinfo_buf_static)) {
+            if(NULL == (tinfo_buf_dyn = (uint8_t *)malloc(md_len + sizeof(uint64_t))))
+                HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate buffer for constant datatype metadata");
+            tinfo_buf = tinfo_buf_dyn;
+        } /* end if */
+
+        /* Read internal metadata from datatype */
+        if((ret = H5VL_rados_read(H5VL_rados_params_g.rados_ioctx, dtype->obj.oid, (char *)(tinfo_buf + sizeof(uint64_t)), md_len, 0)) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, NULL, "can't read metadata from datatype: %s", strerror(-ret));
+
+        /* Decode info lengths */
+        p = (uint8_t *)tinfo_buf + sizeof(uint64_t);
+        UINT64DECODE(p, type_len);
+        UINT64DECODE(p, tcpl_len);
+        if(type_len + tcpl_len + (3 * sizeof(uint64_t)) != md_len)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, NULL, "datatype internal metadata size mismatch");
+
+        /* Broadcast datatype info if there are other processes that need it */
+        if(collective && (item->file->num_procs > 1)) {
+            assert(tinfo_buf);
+            assert(sizeof(tinfo_buf_static) >= 4 * sizeof(uint64_t));
+
+            /* Encode oid */
+            p = tinfo_buf;
+            UINT64ENCODE(p, dtype->obj.bin_oid);
+
+            /* MPI_Bcast tinfo_buf */
+            assert((md_len + sizeof(uint64_t) >= sizeof(tinfo_buf_static)) || (tinfo_buf == tinfo_buf_static));
+            if(MPI_SUCCESS != MPI_Bcast((char *)tinfo_buf, sizeof(tinfo_buf_static), MPI_BYTE, 0, item->file->comm))
+                HGOTO_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast datatype info");
+
+            /* Need a second bcast if it did not fit in the receivers' static
+             * buffer */
+            if(tinfo_buf != tinfo_buf_static) {
+                assert(md_len + sizeof(uint64_t) > sizeof(tinfo_buf_static));
+                if(MPI_SUCCESS != MPI_Bcast((char *)tinfo_buf + (4 * sizeof(uint64_t)), (int)(md_len - (3 * sizeof(uint64_t))), MPI_BYTE, 0, item->file->comm))
+                    HGOTO_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast datatype info (second bcast)");
+            } /* end if */
+
+            /* Reset p */
+            p = tinfo_buf + (4 * sizeof(uint64_t));
+        } /* end if */
+    } /* end if */
+    else {
+        uint64_t tot_len = 0;
+
+        /* Receive datatype info */
+        if(MPI_SUCCESS != MPI_Bcast((char *)tinfo_buf, sizeof(tinfo_buf_static), MPI_BYTE, 0, item->file->comm))
+            HGOTO_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast datatype info");
+
+        /* Decode oid */
+        p = tinfo_buf_static;
+        UINT64DECODE(p, dtype->obj.bin_oid);
+
+        /* Decode serialized info lengths */
+        UINT64DECODE(p, type_len);
+        UINT64DECODE(p, tcpl_len);
+        tot_len = type_len + tcpl_len;
+
+        /* Check for type_len set to 0 - indicates failure */
+        if(type_len == 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "lead process failed to open datatype");
+
+        /* Check if we need to perform another bcast */
+        if(tot_len + (4 * sizeof(uint64_t)) > sizeof(tinfo_buf_static)) {
+            /* Allocate a dynamic buffer if necessary */
+            if(tot_len > sizeof(tinfo_buf_static)) {
+                if(NULL == (tinfo_buf_dyn = (uint8_t *)malloc(tot_len)))
+                    HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate space for datatype info");
+                tinfo_buf = tinfo_buf_dyn;
+            } /* end if */
+
+            /* Receive datatype info */
+            if(MPI_SUCCESS != MPI_Bcast((char *)tinfo_buf, (int)tot_len, MPI_BYTE, 0, item->file->comm))
+                HGOTO_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast datatype info (second bcast)");
+
+            p = tinfo_buf;
+        } /* end if */
+    } /* end else */
+
+    /* Decode datatype and TCPL */
+    if((dtype->type_id = H5Tdecode(p)) < 0)
+        HGOTO_ERROR(H5E_ARGS, H5E_CANTDECODE, NULL, "can't deserialize datatype");
+    p += type_len;
+    if((dtype->tcpl_id = H5Pdecode(p)) < 0)
+        HGOTO_ERROR(H5E_ARGS, H5E_CANTDECODE, NULL, "can't deserialize datatype creation property list");
+
+    /* Finish setting up datatype struct */
+    if((dtype->tapl_id = H5Pcopy(tapl_id)) < 0)
+        HGOTO_ERROR(H5E_SYM, H5E_CANTCOPY, NULL, "failed to copy tapl");
+
+    /* Set return value */
+    FUNC_RETURN_SET((void *)dtype);
+
+done:
+    /* Cleanup on failure */
+    if(FUNC_ERRORED) {
+        /* Bcast tinfo_buf as '0' if necessary - this will trigger failures in
+         * in other processes so we do not need to do the second bcast. */
+        if(must_bcast) {
+            memset(tinfo_buf_static, 0, sizeof(tinfo_buf_static));
+            if(MPI_SUCCESS != MPI_Bcast(tinfo_buf_static, sizeof(tinfo_buf_static), MPI_BYTE, 0, item->file->comm))
+                HDONE_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast empty datatype info");
+        } /* end if */
+
+        /* Close datatype */
+        if(dtype && H5VL_rados_datatype_close(dtype, dxpl_id, req) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CLOSEERROR, NULL, "can't close datatype");
+    } /* end if */
+
+    /* Close target group */
+    if(target_grp && H5VL_rados_group_close(target_grp, dxpl_id, req) < 0)
+        HDONE_ERROR(H5E_DATATYPE, H5E_CLOSEERROR, NULL, "can't close group");
+
+    /* Free memory */
+    free(tinfo_buf_dyn);
+
+    FUNC_LEAVE_VOL
+}
+
+static herr_t
+H5VL_rados_datatype_close(void *_dtype, hid_t H5VL_ATTR_UNUSED dxpl_id,
+    void H5VL_ATTR_UNUSED **req)
+{
+    H5VL_rados_dtype_t *dtype = (H5VL_rados_dtype_t *)_dtype;
+
+    FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+    assert(dtype);
+
+    if(--dtype->obj.item.rc == 0) {
+        /* Free datatype data structures */
+        free(dtype->obj.oid);
+        if(dtype->type_id != FAIL && H5Idec_ref(dtype->type_id) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CANTDEC, FAIL, "failed to close datatype");
+        if(dtype->tcpl_id != FAIL && H5Idec_ref(dtype->tcpl_id) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CANTDEC, FAIL, "failed to close plist");
+        if(dtype->tapl_id != FAIL && H5Idec_ref(dtype->tapl_id) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CANTDEC, FAIL, "failed to close plist");
+        free(dtype);
+    } /* end if */
+
+    FUNC_LEAVE_VOL
+}
+
+/*---------------------------------------------------------------------------*/
+static void *
 H5VL_rados_file_create(const char *name, unsigned flags, hid_t fcpl_id,
     hid_t fapl_id, hid_t dxpl_id, void **req)
 {
@@ -2183,7 +2553,7 @@ H5VL_rados_group_create(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "group name is NULL");
 
@@ -2245,7 +2615,7 @@ H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "group name is NULL");
 
@@ -2642,7 +3012,8 @@ H5VL_rados_oid_create_binary(uint64_t idx, H5I_type_t obj_type,
     if(obj_type == H5I_GROUP)
         *bin_oid |= H5VL_RADOS_TYPE_GRP;
     else if(obj_type == H5I_DATASET)
-        *bin_oid |= H5VL_RADOS_TYPE_DSET;
+        *bin_oid |= H5VL_RADOS_TYPE_DSET
+	  ;
     else {
         assert(obj_type == H5I_DATATYPE);
         *bin_oid |= H5VL_RADOS_TYPE_DTYPE;
