@@ -254,6 +254,8 @@ static herr_t H5VL_rados_file_close(void *_file, hid_t dxpl_id, void **req);
 /* Group callbacks */
 static void *H5VL_rados_group_create(void *_item, const H5VL_loc_params_t *loc_params,
     const char *name, hid_t lcpl_id, hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id, void **req);
+static herr_t H5VL_rados_group_get(void *_grp, H5VL_group_get_args_t *get_args,
+    hid_t dxpl_id, void **req);
 static void *H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
     const char *name, hid_t gapl_id, hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_group_close(void *_grp, hid_t dxpl_id, void **req);
@@ -413,7 +415,7 @@ static const H5VL_class_t H5VL_rados_g = {
     {   /* group_cls */
         H5VL_rados_group_create,                    /* create */
         H5VL_rados_group_open,                      /* open */
-        NULL,                                       /* get */
+        H5VL_rados_group_get,                       /* get */
         NULL,                                       /* specific */
         NULL,                                       /* optional */
         H5VL_rados_group_close                      /* close */
@@ -2589,6 +2591,34 @@ done:
         if(grp && H5VL_rados_group_close(grp, dxpl_id, req) < 0)
             HDONE_ERROR(H5E_SYM, H5E_CLOSEERROR, NULL, "can't close group");
 
+    FUNC_LEAVE_VOL
+}
+
+static herr_t H5VL_rados_group_get(void *_grp, H5VL_group_get_args_t *get_args,
+    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req)
+{
+    H5VL_rados_group_t *grp = (H5VL_rados_group_t *)_grp;
+
+    FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+    switch (get_args->op_type) {
+        case H5VL_GROUP_GET_GCPL:
+            {
+                hid_t *plist_id = &(get_args->args.get_gcpl.gcpl_id);
+
+                /* Retrieve the group's creation property list */
+                if((*plist_id = H5Pcopy(grp->gcpl_id)) < 0)
+                    HGOTO_ERROR(H5E_SYM, H5E_CANTGET, FAIL, "can't get grp creation property list");
+
+                break;
+            } /* end block */
+        case H5VL_GROUP_GET_INFO:
+	  // TODO: on hold until links are implemented, as group_info contains link info
+        default:
+            HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "can't get this type of information from group");
+    } /* end switch */
+
+done:
     FUNC_LEAVE_VOL
 }
 
