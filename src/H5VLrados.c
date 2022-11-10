@@ -221,12 +221,12 @@ static void *H5VL_rados_dataset_create(void *_item,
     hid_t dcpl_id, hid_t dapl_id, hid_t dxpl_id, void **req);
 static void *H5VL_rados_dataset_open(void *_item, const H5VL_loc_params_t *loc_params,
     const char *name, hid_t dapl_id, hid_t dxpl_id, void **req);
-static herr_t H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id,
-    hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, void *buf,
-    void **req);
-static herr_t H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id,
-    hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, const void *buf,
-    void **req);
+static herr_t H5VL_rados_dataset_read(size_t count, void *_dset[],
+    hid_t mem_type_id[], hid_t mem_space_id[], hid_t file_space_id[],
+    hid_t dxpl_id, void *buf[], void **req);
+static herr_t H5VL_rados_dataset_write(size_t count, void *_dset[],
+    hid_t mem_type_id[], hid_t mem_space_id[], hid_t file_space_id[],
+    hid_t dxpl_id, const void *buf[], void **req);
 static herr_t H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_args_t *arguments, 
     hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_dataset_close(void *_dset, hid_t dxpl_id, void **req);
@@ -262,7 +262,7 @@ static herr_t H5VL_rados_group_close(void *_grp, hid_t dxpl_id, void **req);
 
 /* Introspection callbacks */
 static herr_t H5_rados_get_conn_cls(void *item, H5VL_get_conn_lvl_t lvl, const H5VL_class_t **conn_cls);
-static herr_t H5_rados_get_cap_flags(const void *info, unsigned *cap_flags);
+static herr_t H5_rados_get_cap_flags(const void *info, uint64_t *cap_flags);
 static herr_t H5_rados_opt_query(void *item, H5VL_subclass_t cls, int opt_type,
 				 uint64_t *supported);
 
@@ -352,7 +352,7 @@ herr_t H5Ssel_iter_close(hid_t sel_iter_id);
 
 /* The RADOS VOL plugin struct */
 static const H5VL_class_t H5VL_rados_g = {
-    H5VL_VERSION,                                              /* version      */
+    H5VL_VERSION,                                   /* version      */
     H5VL_RADOS_VALUE,                               /* value        */
     H5VL_RADOS_NAME_STRING,                         /* name         */
 #if H5VL_VERSION >= 1
@@ -439,7 +439,7 @@ static const H5VL_class_t H5VL_rados_g = {
         /* introspect_cls */
         H5_rados_get_conn_cls,                      /* get_conn_cls */
         H5_rados_get_cap_flags,                     /* get_cap_flags */
-	H5_rados_opt_query                          /* opt_query */
+        H5_rados_opt_query                          /* opt_query */
     },
     {   /* request_cls */
         NULL,                                       /* wait         */
@@ -1068,11 +1068,11 @@ done:
 
 /*---------------------------------------------------------------------------*/
 static herr_t
-H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
-    hid_t file_space_id, hid_t dxpl_id, void *buf, void H5VL_ATTR_UNUSED **req)
+H5VL_rados_dataset_read(size_t count, void *_dset[], hid_t mem_type_id[], hid_t mem_space_id[],
+    hid_t file_space_id[], hid_t dxpl_id, void *buf[], void H5VL_ATTR_UNUSED **req)
 {
     H5VL_rados_select_chunk_info_t *chunk_info = NULL; /* Array of info for each chunk selected in the file */
-    H5VL_rados_dset_t *dset = (H5VL_rados_dset_t *)_dset;
+    H5VL_rados_dset_t *dset = NULL;
     hid_t sel_iter_id; /* Selection iteration info */
     hbool_t sel_iter_init = FALSE; /* Selection iteration info has been initialized */
     int ndims;
@@ -1101,6 +1101,11 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
+    if (count != 1)
+        HGOTO_ERROR(H5E_DATASET, H5E_UNSUPPORTED, FAIL, "multi-dataset reads are unsupported");
+
+    dset = (H5VL_rados_dset_t *)_dset[0];
+
     /* Get dataspace extent */
     if((ndims = H5Sget_simple_extent_ndims(dset->space_id)) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get number of dimensions");
@@ -1108,22 +1113,22 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get dimensions");
 
     /* Get "real" file space */
-    if(file_space_id == H5S_ALL)
+    if(file_space_id[0] == H5S_ALL)
         real_file_space_id = dset->space_id;
     else
-        real_file_space_id = file_space_id;
+        real_file_space_id = file_space_id[0];
 
     /* Get number of elements in selection */
     if((num_elem = H5Sget_select_npoints(real_file_space_id)) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get number of points in selection");
 
     /* Get "real" file space */
-    if(mem_space_id == H5S_ALL)
+    if(mem_space_id[0] == H5S_ALL)
         real_mem_space_id = real_file_space_id;
     else {
         hssize_t num_elem_file;
 
-        real_mem_space_id = mem_space_id;
+        real_mem_space_id = mem_space_id[0];
 
         /* Verify number of elements in memory selection matches file selection
          */
@@ -1138,7 +1143,7 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
         HGOTO_DONE(SUCCEED);
 
     /* Initialize type conversion */
-    if(H5VL_rados_tconv_init(dset->type_id, &file_type_size, mem_type_id, &mem_type_size, &types_equal, &reuse, &need_bkg, &fill_bkg) < 0)
+    if(H5VL_rados_tconv_init(dset->type_id, &file_type_size, mem_type_id[0], &mem_type_size, &types_equal, &reuse, &need_bkg, &fill_bkg) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't initialize type conversion");
 
     /* Check if the dataset actually has a chunked storage layout. If it does not, simply
@@ -1206,19 +1211,19 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                  * to check the extents because they cannot be the same.  We
                  * could also allow the case where the memory space is not
                  * H5S_ALL but is equivalent. */
-                if(mem_space_id == H5S_ALL && chunk_info_len == 1)
+                if(mem_space_id[0] == H5S_ALL && chunk_info_len == 1)
                     if((match_select = H5Sextent_equal(real_file_space_id, chunk_info[i].fspace_id)) < 0)
                         HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOMPARE, FAIL, "can't check if file and chunk dataspaces are equal");
 
                 /* Check for matching selections */
                 if(match_select) {
                     /* Build read op from file space */
-                    if(H5VL_rados_build_io_op_match(chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, buf, NULL, read_op, NULL) < 0)
+                    if(H5VL_rados_build_io_op_match(chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, buf[0], NULL, read_op, NULL) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS read op");
                 } /* end if */
                 else {
                     /* Build read op from file space and mem space */
-                    if(H5VL_rados_build_io_op_merge(chunk_info[i].mspace_id, chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, buf, NULL, read_op, NULL) < 0)
+                    if(H5VL_rados_build_io_op_merge(chunk_info[i].mspace_id, chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, buf[0], NULL, read_op, NULL) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS read op");
                 } /* end else */
 
@@ -1257,7 +1262,7 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
                 /* Find or allocate usable type conversion buffer */
                 if(contig && (reuse == H5VL_RADOS_TCONV_REUSE_TCONV))
-                    tconv_buf = (char *)buf + (size_t)sel_off;
+                    tconv_buf = (char *)buf[0] + (size_t)sel_off;
                 else {
                     if(!tmp_tconv_buf)
                         if(NULL == (tmp_tconv_buf = malloc(
@@ -1271,7 +1276,7 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                 /* Find or allocate usable background buffer */
                 if(need_bkg) {
                     if(contig && (reuse == H5VL_RADOS_TCONV_REUSE_BKG))
-                        bkg_buf = (char *)buf + (size_t)sel_off;
+                        bkg_buf = (char *)buf[0] + (size_t)sel_off;
                     else {
                         if(!tmp_bkg_buf)
                             if(NULL == (tmp_bkg_buf = malloc(
@@ -1293,11 +1298,11 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
                 /* Gather data to background buffer if necessary */
                 if(fill_bkg && (bkg_buf == tmp_bkg_buf))
-                    if(H5Dgather(chunk_info[i].mspace_id, buf, mem_type_id, (size_t)num_elem * mem_type_size, bkg_buf, NULL, NULL) < 0)
+                    if(H5Dgather(chunk_info[i].mspace_id, buf[0], mem_type_id[0], (size_t)num_elem * mem_type_size, bkg_buf, NULL, NULL) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't gather data to background buffer");
 
                 /* Perform type conversion */
-                if(H5Tconvert(dset->type_id, mem_type_id, (size_t)num_elem, tconv_buf, bkg_buf, dxpl_id) < 0)
+                if(H5Tconvert(dset->type_id, mem_type_id[0], (size_t)num_elem, tconv_buf, bkg_buf, dxpl_id) < 0)
                     HGOTO_ERROR(H5E_DATASET, H5E_CANTCONVERT, FAIL, "can't perform type conversion");
 
                 /* Scatter data to memory buffer if necessary */
@@ -1306,7 +1311,7 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
                     scatter_cb_ud.buf = tconv_buf;
                     scatter_cb_ud.len = (size_t)num_elem * mem_type_size;
-                    if(H5Dscatter(H5VL_rados_scatter_cb, &scatter_cb_ud, mem_type_id, chunk_info[i].mspace_id, buf) < 0)
+                    if(H5Dscatter(H5VL_rados_scatter_cb, &scatter_cb_ud, mem_type_id[0], chunk_info[i].mspace_id, buf[0]) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't scatter data to read buffer");
                 } /* end if */
             } /* end else */
@@ -1346,12 +1351,11 @@ done:
 
 /*---------------------------------------------------------------------------*/
 static herr_t
-H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
-    hid_t file_space_id, hid_t H5VL_ATTR_UNUSED dxpl_id,
-    const void *buf, void H5VL_ATTR_UNUSED **req)
+H5VL_rados_dataset_write(size_t count, void *_dset[], hid_t mem_type_id[], hid_t mem_space_id[],
+    hid_t file_space_id[], hid_t dxpl_id, const void *buf[], void H5VL_ATTR_UNUSED **req)
 {
     H5VL_rados_select_chunk_info_t *chunk_info = NULL; /* Array of info for each chunk selected in the file */
-    H5VL_rados_dset_t *dset = (H5VL_rados_dset_t *)_dset;
+    H5VL_rados_dset_t *dset = NULL;
     int ndims;
     hsize_t dim[H5S_MAX_RANK];
     hid_t real_file_space_id;
@@ -1378,6 +1382,11 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
+    if (count != 1)
+        HGOTO_ERROR(H5E_DATASET, H5E_UNSUPPORTED, FAIL, "multi-dataset writes are unsupported");
+
+    dset = (H5VL_rados_dset_t *)_dset[0];
+
     /* Check for write access */
     if(!(dset->obj.item.file->flags & H5F_ACC_RDWR))
         HGOTO_ERROR(H5E_FILE, H5E_BADVALUE, FAIL, "no write intent on file");
@@ -1389,22 +1398,22 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get dimensions");
 
     /* Get "real" file space */
-    if(file_space_id == H5S_ALL)
+    if(file_space_id[0] == H5S_ALL)
         real_file_space_id = dset->space_id;
     else
-        real_file_space_id = file_space_id;
+        real_file_space_id = file_space_id[0];
 
     /* Get number of elements in selection */
     if((num_elem = H5Sget_select_npoints(real_file_space_id)) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get number of points in selection");
 
     /* Get "real" file space */
-    if(mem_space_id == H5S_ALL)
+    if(mem_space_id[0] == H5S_ALL)
         real_mem_space_id = real_file_space_id;
     else {
         hssize_t num_elem_file;
 
-        real_mem_space_id = mem_space_id;
+        real_mem_space_id = mem_space_id[0];
 
         /* Verify number of elements in memory selection matches file selection
          */
@@ -1419,7 +1428,7 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
         HGOTO_DONE(SUCCEED);
 
     /* Initialize type conversion */
-    if(H5VL_rados_tconv_init(dset->type_id, &file_type_size, mem_type_id, &mem_type_size, &types_equal, &reuse, &need_bkg, &fill_bkg) < 0)
+    if(H5VL_rados_tconv_init(dset->type_id, &file_type_size, mem_type_id[0], &mem_type_size, &types_equal, &reuse, &need_bkg, &fill_bkg) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't initialize type conversion");
 
     /* Check if the dataset actually has a chunked storage layout. If it does not, simply
@@ -1500,19 +1509,19 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                  * to check the extents because they cannot be the same.  We
                  * could also allow the case where the memory space is not
                  * H5S_ALL but is equivalent. */
-                if(mem_space_id == H5S_ALL && chunk_info_len == 1)
+                if(mem_space_id[0] == H5S_ALL && chunk_info_len == 1)
                     if((match_select = H5Sextent_equal(real_file_space_id, chunk_info[i].fspace_id)) < 0)
                         HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOMPARE, FAIL, "can't check if file and chunk dataspaces are equal");
 
                 /* Check for matching selections */
                 if(match_select) {
                     /* Build write op from file space */
-                    if(H5VL_rados_build_io_op_match(chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, NULL, buf, NULL, write_op) < 0)
+                    if(H5VL_rados_build_io_op_match(chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, NULL, buf[0], NULL, write_op) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS write op");
                 } /* end if */
                 else {
                     /* Build write op from file space and mem space */
-                    if(H5VL_rados_build_io_op_merge(chunk_info[i].mspace_id, chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, NULL, buf, NULL, write_op) < 0)
+                    if(H5VL_rados_build_io_op_merge(chunk_info[i].mspace_id, chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, NULL, buf[0], NULL, write_op) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS write op");
                 } /* end else */
             } /* end if */
@@ -1544,11 +1553,11 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS write op");
 
                 /* Gather data to conversion buffer */
-                if(H5Dgather(chunk_info[i].mspace_id, buf, mem_type_id, (size_t)num_elem * mem_type_size, tconv_buf, NULL, NULL) < 0)
+                if(H5Dgather(chunk_info[i].mspace_id, buf[0], mem_type_id[0], (size_t)num_elem * mem_type_size, tconv_buf, NULL, NULL) < 0)
                     HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't gather data to conversion buffer");
 
                 /* Perform type conversion */
-                if(H5Tconvert(mem_type_id, dset->type_id, (size_t)num_elem, tconv_buf, bkg_buf, dxpl_id) < 0)
+                if(H5Tconvert(mem_type_id[0], dset->type_id, (size_t)num_elem, tconv_buf, bkg_buf, dxpl_id) < 0)
                     HGOTO_ERROR(H5E_DATASET, H5E_CANTCONVERT, FAIL, "can't perform type conversion");
             } /* end else */
 
@@ -2173,7 +2182,6 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
     if(NULL == (file = malloc(sizeof(H5VL_rados_file_t))))
         HGOTO_ERROR(H5E_FILE, H5E_CANTALLOC, NULL, "can't allocate RADOS file struct");
     memset(file, 0, sizeof(H5VL_rados_file_t));
-    //file->glob_md_oh = DAOS_HDL_INVAL;
     file->root_grp = NULL;
     file->fcpl_id = FAIL;
     file->fapl_id = FAIL;
@@ -2845,7 +2853,7 @@ H5_rados_get_conn_cls(void *item, H5VL_get_conn_lvl_t H5VL_ATTR_UNUSED lvl, cons
 }
 
 static herr_t
-H5_rados_get_cap_flags(const void H5VL_ATTR_UNUSED *info, unsigned *cap_flags)
+H5_rados_get_cap_flags(const void H5VL_ATTR_UNUSED *info, uint64_t *cap_flags)
 {
   FUNC_ENTER_VOL(herr_t, SUCCEED)
 
