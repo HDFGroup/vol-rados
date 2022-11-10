@@ -2,11 +2,11 @@ name: spack mobject+bedrock
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     paths-ignore:
     - 'doc/**'
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
