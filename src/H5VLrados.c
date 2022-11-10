@@ -687,7 +687,7 @@ H5VL_rados_dataset_create(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "dataset name is NULL");
 
@@ -841,7 +841,7 @@ H5VL_rados_dataset_open(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "dataset name is NULL");
 
@@ -2057,7 +2057,7 @@ H5VL_rados_group_create(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "group name is NULL");
 
@@ -2119,7 +2119,7 @@ H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "group name is NULL");
 
@@ -2484,7 +2484,7 @@ H5VL_rados_oid_create(const H5VL_rados_file_t *file, uint64_t idx,
     /* Create binary oid */
     H5VL_rados_oid_create_binary(idx, obj_type, &tmp_bin_oid);
 
-    /* Create sting oid */
+    /* Create string oid */
     if(H5VL_rados_oid_create_string(file, tmp_bin_oid, oid) < 0)
         HGOTO_ERROR(H5E_VOL, H5E_CANTINIT, FAIL, "can't encode string object id");
 
