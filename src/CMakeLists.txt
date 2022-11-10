@@ -49,8 +49,7 @@ endif()
 # HDF5
 option(HDF5_VOL_RADOS_USE_SYSTEM_HDF5 "Use system-installed HDF5." ON)
 if(HDF5_VOL_RADOS_USE_SYSTEM_HDF5)
-  # We will require 1.12 once it is released
-  find_package(HDF5 1.13 NO_MODULE NAMES hdf5 COMPONENTS C shared)
+  find_package(HDF5 1.13.3 NO_MODULE NAMES hdf5 COMPONENTS C shared)
   if(HDF5_FOUND)
     set(HDF5_C_SHARED_LIBRARY hdf5-shared)
     if(NOT TARGET ${HDF5_C_SHARED_LIBRARY})
@@ -63,7 +62,7 @@ if(HDF5_VOL_RADOS_USE_SYSTEM_HDF5)
     )
   else()
     # Allow for HDF5 autotools builds
-    find_package(HDF5 1.13 MODULE REQUIRED)
+    find_package(HDF5 1.13.3 MODULE REQUIRED)
     if(HDF5_FOUND)
       set(HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES
         ${HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES}
@@ -118,37 +117,6 @@ if(MPI_FOUND)
   )
 else()
   message(FATAL_ERROR "Could not find MPI.")
-endif()
-
-# UUID
-#find_package(UUID REQUIRED)
-#if(UUID_FOUND)
-#  set(HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES
-#    ${HDF5_VOL_RADOS_EXT_INCLUDE_DEPENDENCIES}
-#    ${UUID_INCLUDE_DIRS}
-#  )
-#  set(HDF5_VOL_RADOS_EXT_LIB_DEPENDENCIES
-#    ${HDF5_VOL_RADOS_EXT_LIB_DEPENDENCIES}
-#    ${UUID_LIBRARIES}
-#  )
-#else()
-#  message(FATAL_ERROR "Could not find libuuid, please check UUID_INCLUDE_DIR.")
-#endif()
-
-#-----------------------------------------------------------------------------
-# Option to enable debug output
-#-----------------------------------------------------------------------------
-option(HDF5_VOL_RADOS_ENABLE_DEBUG "Turn on debug output." OFF)
-if(HDF5_VOL_RADOS_ENABLE_DEBUG)
-  set(DV_PLUGIN_DEBUG 1)
-endif()
-
-#-----------------------------------------------------------------------------
-# Option to enable memory checker
-#-----------------------------------------------------------------------------
-option(HDF5_VOL_RADOS_ENABLE_MEM_TRACKING "Turn on memory checker." OFF)
-if(HDF5_VOL_RADOS_ENABLE_MEM_TRACKING)
-  set(DV_TRACK_MEM_USAGE 1)
 endif()
 
 #------------------------------------------------------------------------------
