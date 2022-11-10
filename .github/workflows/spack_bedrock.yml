@@ -32,8 +32,8 @@ jobs:
         spack repo add ./mochi-spack-packages
         spack install --test root mobject@main+bedrock
         spack load mobject
-        spack view copy -i /tmp mobject
-        ls /tmp/lib/
+        sudo . ./spack/share/spack/setup-env.sh && spack view copy -i /usr/local mobject
+        ls /usr/local/lib/
         mkdir build
         cd build
         cmake ..
