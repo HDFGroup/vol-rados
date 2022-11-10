@@ -23,7 +23,7 @@ find_path(ABT_INCLUDE_DIR abt.h
   HINTS ${PC_MOBJECT_INCLUDEDIR} ${PC_MOBJECT_INCLUDE_DIRS}
   PATHS /usr/local/include /usr/include)
 
-find_library(MOBJECT_LIBRARY NAMES mobject-store
+find_library(MOBJECT_LIBRARY NAMES mobject-client
   HINTS ${PC_MOBJECT_LIBDIR} ${PC_MOBJECT_LIBRARY_DIRS}
   PATHS /usr/local/lib64 /usr/local/lib /usr/lib64 /usr/lib)
 

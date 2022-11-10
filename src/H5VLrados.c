@@ -35,6 +35,7 @@
 #define H5VL_RADOS_LINK_VAL_BUF_SIZE    256
 #define H5VL_RADOS_GINFO_BUF_SIZE       256
 #define H5VL_RADOS_DINFO_BUF_SIZE       1024
+#define H5VL_RADOS_TINFO_BUF_SIZE       1024
 #define H5VL_RADOS_SEQ_LIST_LEN         128
 
 /* Definitions for building oids */
@@ -220,35 +221,50 @@ static void *H5VL_rados_dataset_create(void *_item,
     hid_t dcpl_id, hid_t dapl_id, hid_t dxpl_id, void **req);
 static void *H5VL_rados_dataset_open(void *_item, const H5VL_loc_params_t *loc_params,
     const char *name, hid_t dapl_id, hid_t dxpl_id, void **req);
-static herr_t H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id,
-    hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, void *buf,
-    void **req);
-static herr_t H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id,
-    hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, const void *buf,
-    void **req);
-static herr_t H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
-    hid_t dxpl_id, void **req, va_list arguments);
+static herr_t H5VL_rados_dataset_read(size_t count, void *_dset[],
+    hid_t mem_type_id[], hid_t mem_space_id[], hid_t file_space_id[],
+    hid_t dxpl_id, void *buf[], void **req);
+static herr_t H5VL_rados_dataset_write(size_t count, void *_dset[],
+    hid_t mem_type_id[], hid_t mem_space_id[], hid_t file_space_id[],
+    hid_t dxpl_id, const void *buf[], void **req);
+static herr_t H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_args_t *arguments, 
+    hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_dataset_close(void *_dset, hid_t dxpl_id, void **req);
 
 /* Datatype callbacks */
-/* TODO */
+static void *H5VL_rados_datatype_commit(void *_item,
+    const H5VL_loc_params_t *loc_params, const char *name,
+    hid_t type_id, hid_t lcpl_id,
+    hid_t tcpl_id, hid_t tapl_id, hid_t dxpl_id, void **req);
+static void *H5VL_rados_datatype_open(void *_item, const H5VL_loc_params_t *loc_params,
+    const char *name, hid_t tapl_id, hid_t dxpl_id, void **req);
+static herr_t H5VL_rados_datatype_close(void *_dtype, hid_t dxpl_id, void **req);
 
 /* File callbacks */
 static void *H5VL_rados_file_create(const char *name, unsigned flags,
     hid_t fcpl_id, hid_t fapl_id, hid_t dxpl_id, void **req);
 static void *H5VL_rados_file_open(const char *name, unsigned flags,
     hid_t fapl_id, hid_t dxpl_id, void **req);
-static herr_t H5VL_rados_file_specific(void *_item,
-    H5VL_file_specific_t specific_type, hid_t dxpl_id, void **req,
-    va_list arguments);
+static herr_t H5VL_rados_file_get(void *_item, H5VL_file_get_args_t *get_args,
+    hid_t dxpl_id, void **req);
+static herr_t H5VL_rados_file_specific(void *item,
+    H5VL_file_specific_args_t *arguments, hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_file_close(void *_file, hid_t dxpl_id, void **req);
 
 /* Group callbacks */
 static void *H5VL_rados_group_create(void *_item, const H5VL_loc_params_t *loc_params,
     const char *name, hid_t lcpl_id, hid_t gcpl_id, hid_t gapl_id, hid_t dxpl_id, void **req);
+static herr_t H5VL_rados_group_get(void *_grp, H5VL_group_get_args_t *get_args,
+    hid_t dxpl_id, void **req);
 static void *H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
     const char *name, hid_t gapl_id, hid_t dxpl_id, void **req);
 static herr_t H5VL_rados_group_close(void *_grp, hid_t dxpl_id, void **req);
+
+/* Introspection callbacks */
+static herr_t H5_rados_get_conn_cls(void *item, H5VL_get_conn_lvl_t lvl, const H5VL_class_t **conn_cls);
+static herr_t H5_rados_get_cap_flags(const void *info, uint64_t *cap_flags);
+static herr_t H5_rados_opt_query(void *item, H5VL_subclass_t cls, int opt_type,
+				 uint64_t *supported);
 
 /* Link callbacks */
 /* TODO */
@@ -336,10 +352,13 @@ herr_t H5Ssel_iter_close(hid_t sel_iter_id);
 
 /* The RADOS VOL plugin struct */
 static const H5VL_class_t H5VL_rados_g = {
-    H5VL_RADOS_VERSION_MAJOR,                       /* version      */
+    H5VL_VERSION,                                   /* version      */
     H5VL_RADOS_VALUE,                               /* value        */
     H5VL_RADOS_NAME_STRING,                         /* name         */
-    0,                                              /* capability flags */
+#if H5VL_VERSION >= 1
+    H5VL_RADOS_VERSION_MAJOR,                       /* connector version */
+#endif
+    H5VL_CAP_FLAG_NONE,                             /* capability flags */
     H5VL_rados_init,                                /* initialize */
     H5VL_rados_term,                                /* terminate */
     {   /* info_cls - may need more here (DER) */
@@ -378,17 +397,17 @@ static const H5VL_class_t H5VL_rados_g = {
         H5VL_rados_dataset_close                    /* close */
     },
     {   /* datatype_cls */
-        NULL,                                       /* commit */
-        NULL,                                       /* open */
+        H5VL_rados_datatype_commit,                 /* commit */
+        H5VL_rados_datatype_open,                   /* open */
         NULL,                                       /* get */
         NULL,                                       /* specific */
         NULL,                                       /* optional */
-        NULL,                                       /* close */
+        H5VL_rados_datatype_close,                  /* close */
     },
     {   /* file_cls */
         H5VL_rados_file_create,                     /* create */
         H5VL_rados_file_open,                       /* open */
-        NULL,                                       /* get */
+        H5VL_rados_file_get,                        /* get */
         H5VL_rados_file_specific,                   /* specific */
         NULL,                                       /* optional */
         H5VL_rados_file_close                       /* close */
@@ -396,7 +415,7 @@ static const H5VL_class_t H5VL_rados_g = {
     {   /* group_cls */
         H5VL_rados_group_create,                    /* create */
         H5VL_rados_group_open,                      /* open */
-        NULL,                                       /* get */
+        H5VL_rados_group_get,                       /* get */
         NULL,                                       /* specific */
         NULL,                                       /* optional */
         H5VL_rados_group_close                      /* close */
@@ -416,6 +435,12 @@ static const H5VL_class_t H5VL_rados_g = {
         NULL,                                       /* specific */
         NULL,                                       /* optional */
     },
+    {
+        /* introspect_cls */
+        H5_rados_get_conn_cls,                      /* get_conn_cls */
+        H5_rados_get_cap_flags,                     /* get_cap_flags */
+        H5_rados_opt_query                          /* opt_query */
+    },
     {   /* request_cls */
         NULL,                                       /* wait         */
         NULL,                                       /* notify       */
@@ -424,6 +449,19 @@ static const H5VL_class_t H5VL_rados_g = {
         NULL,                                       /* optional     */
         NULL                                        /* free         */
     },
+    {
+        /* blob_cls */
+        NULL,                                       /* put */
+        NULL,                                       /* get */
+        NULL,                                       /* specific */
+        NULL                                        /* optional */
+    }, // FIXME untested
+    {
+        /* token_cls */
+        NULL,                                       /* cmp */
+        NULL,                                       /* to_str */
+        NULL                                        /* from_str */
+    }, // FIXME untested
     NULL                                            /* optional     */
 };
 
@@ -475,11 +513,11 @@ H5VLrados_init(const char * const id, const char *path, const char *pool_name)
         HGOTO_ERROR(H5E_VOL, H5E_CANTINIT, FAIL, "could not initialize RADOS cluster");
 
     /* Register the RADOS VOL, if it isn't already */
-    if((is_registered = H5VLis_connector_registered(H5VL_rados_g.name)) < 0)
+    if((is_registered = H5VLis_connector_registered_by_name(H5VL_rados_g.name)) < 0)
         HGOTO_ERROR(H5E_VOL, H5E_CANTGET, FAIL, "can't check if VOL connector already registered");
     if(is_registered) {
         /* Retrieve the ID of the already-registered VOL connector */
-        if((H5VL_RADOS_g = H5VLget_connector_id(H5VL_rados_g.name)) < 0)
+        if((H5VL_RADOS_g = H5VLget_connector_id_by_name(H5VL_rados_g.name)) < 0)
             HGOTO_ERROR(H5E_VOL, H5E_CANTGET, FAIL, "can't get VOL connector ID");
     } else {
         /* Register the VOL connector */
@@ -687,7 +725,7 @@ H5VL_rados_dataset_create(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "dataset name is NULL");
 
@@ -739,7 +777,7 @@ H5VL_rados_dataset_create(void *_item,
         if(H5Tencode(type_id, NULL, &type_size) < 0)
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of datatype");
         if(H5Sencode2(space_id, NULL, &space_size, H5P_DEFAULT) < 0)
-            HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of dataaspace");
+            HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of dataspace");
         if(H5Pencode2(dcpl_id, NULL, &dcpl_size, H5P_DEFAULT) < 0)
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of dcpl");
         md_size = (3 * sizeof(uint64_t)) + type_size + space_size + dcpl_size;
@@ -760,7 +798,7 @@ H5VL_rados_dataset_create(void *_item,
 
         /* Encode dataspace */
         if(H5Sencode2(space_id, md_buf + (3 * sizeof(uint64_t)) + type_size, &space_size, H5P_DEFAULT) < 0)
-            HGOTO_ERROR(H5E_DATASET, H5E_CANTENCODE, NULL, "can't serialize dataaspace");
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTENCODE, NULL, "can't serialize dataspace");
 
         /* Encode DCPL */
         if(H5Pencode2(dcpl_id, md_buf + (3 * sizeof(uint64_t)) + type_size + space_size, &dcpl_size, H5P_DEFAULT) < 0)
@@ -841,7 +879,7 @@ H5VL_rados_dataset_open(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "dataset name is NULL");
 
@@ -871,9 +909,9 @@ H5VL_rados_dataset_open(void *_item,
             must_bcast = TRUE;
 
         /* Check for open by address */
-        if(H5VL_OBJECT_BY_ADDR == loc_params->type) {
+        if(H5VL_OBJECT_BY_TOKEN == loc_params->type) {
             /* Generate oid from address */
-            dset->obj.bin_oid = (uint64_t)loc_params->loc_data.loc_by_addr.addr;
+            dset->obj.bin_oid = *(uint64_t *)loc_params->loc_data.loc_by_token.token;
             if(H5VL_rados_oid_create_string(item->file, dset->obj.bin_oid, &dset->obj.oid) < 0)
                 HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, NULL, "can't encode string oid");
         } /* end if */
@@ -1030,11 +1068,11 @@ done:
 
 /*---------------------------------------------------------------------------*/
 static herr_t
-H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
-    hid_t file_space_id, hid_t dxpl_id, void *buf, void H5VL_ATTR_UNUSED **req)
+H5VL_rados_dataset_read(size_t count, void *_dset[], hid_t mem_type_id[], hid_t mem_space_id[],
+    hid_t file_space_id[], hid_t dxpl_id, void *buf[], void H5VL_ATTR_UNUSED **req)
 {
     H5VL_rados_select_chunk_info_t *chunk_info = NULL; /* Array of info for each chunk selected in the file */
-    H5VL_rados_dset_t *dset = (H5VL_rados_dset_t *)_dset;
+    H5VL_rados_dset_t *dset = NULL;
     hid_t sel_iter_id; /* Selection iteration info */
     hbool_t sel_iter_init = FALSE; /* Selection iteration info has been initialized */
     int ndims;
@@ -1063,6 +1101,11 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
+    if (count != 1)
+        HGOTO_ERROR(H5E_DATASET, H5E_UNSUPPORTED, FAIL, "multi-dataset reads are unsupported");
+
+    dset = (H5VL_rados_dset_t *)_dset[0];
+
     /* Get dataspace extent */
     if((ndims = H5Sget_simple_extent_ndims(dset->space_id)) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get number of dimensions");
@@ -1070,22 +1113,22 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get dimensions");
 
     /* Get "real" file space */
-    if(file_space_id == H5S_ALL)
+    if(file_space_id[0] == H5S_ALL)
         real_file_space_id = dset->space_id;
     else
-        real_file_space_id = file_space_id;
+        real_file_space_id = file_space_id[0];
 
     /* Get number of elements in selection */
     if((num_elem = H5Sget_select_npoints(real_file_space_id)) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get number of points in selection");
 
     /* Get "real" file space */
-    if(mem_space_id == H5S_ALL)
+    if(mem_space_id[0] == H5S_ALL)
         real_mem_space_id = real_file_space_id;
     else {
         hssize_t num_elem_file;
 
-        real_mem_space_id = mem_space_id;
+        real_mem_space_id = mem_space_id[0];
 
         /* Verify number of elements in memory selection matches file selection
          */
@@ -1100,7 +1143,7 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
         HGOTO_DONE(SUCCEED);
 
     /* Initialize type conversion */
-    if(H5VL_rados_tconv_init(dset->type_id, &file_type_size, mem_type_id, &mem_type_size, &types_equal, &reuse, &need_bkg, &fill_bkg) < 0)
+    if(H5VL_rados_tconv_init(dset->type_id, &file_type_size, mem_type_id[0], &mem_type_size, &types_equal, &reuse, &need_bkg, &fill_bkg) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't initialize type conversion");
 
     /* Check if the dataset actually has a chunked storage layout. If it does not, simply
@@ -1168,19 +1211,19 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                  * to check the extents because they cannot be the same.  We
                  * could also allow the case where the memory space is not
                  * H5S_ALL but is equivalent. */
-                if(mem_space_id == H5S_ALL && chunk_info_len == 1)
+                if(mem_space_id[0] == H5S_ALL && chunk_info_len == 1)
                     if((match_select = H5Sextent_equal(real_file_space_id, chunk_info[i].fspace_id)) < 0)
                         HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOMPARE, FAIL, "can't check if file and chunk dataspaces are equal");
 
                 /* Check for matching selections */
                 if(match_select) {
                     /* Build read op from file space */
-                    if(H5VL_rados_build_io_op_match(chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, buf, NULL, read_op, NULL) < 0)
+                    if(H5VL_rados_build_io_op_match(chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, buf[0], NULL, read_op, NULL) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS read op");
                 } /* end if */
                 else {
                     /* Build read op from file space and mem space */
-                    if(H5VL_rados_build_io_op_merge(chunk_info[i].mspace_id, chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, buf, NULL, read_op, NULL) < 0)
+                    if(H5VL_rados_build_io_op_merge(chunk_info[i].mspace_id, chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, buf[0], NULL, read_op, NULL) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS read op");
                 } /* end else */
 
@@ -1219,7 +1262,7 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
                 /* Find or allocate usable type conversion buffer */
                 if(contig && (reuse == H5VL_RADOS_TCONV_REUSE_TCONV))
-                    tconv_buf = (char *)buf + (size_t)sel_off;
+                    tconv_buf = (char *)buf[0] + (size_t)sel_off;
                 else {
                     if(!tmp_tconv_buf)
                         if(NULL == (tmp_tconv_buf = malloc(
@@ -1233,7 +1276,7 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                 /* Find or allocate usable background buffer */
                 if(need_bkg) {
                     if(contig && (reuse == H5VL_RADOS_TCONV_REUSE_BKG))
-                        bkg_buf = (char *)buf + (size_t)sel_off;
+                        bkg_buf = (char *)buf[0] + (size_t)sel_off;
                     else {
                         if(!tmp_bkg_buf)
                             if(NULL == (tmp_bkg_buf = malloc(
@@ -1255,11 +1298,11 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
                 /* Gather data to background buffer if necessary */
                 if(fill_bkg && (bkg_buf == tmp_bkg_buf))
-                    if(H5Dgather(chunk_info[i].mspace_id, buf, mem_type_id, (size_t)num_elem * mem_type_size, bkg_buf, NULL, NULL) < 0)
+                    if(H5Dgather(chunk_info[i].mspace_id, buf[0], mem_type_id[0], (size_t)num_elem * mem_type_size, bkg_buf, NULL, NULL) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't gather data to background buffer");
 
                 /* Perform type conversion */
-                if(H5Tconvert(dset->type_id, mem_type_id, (size_t)num_elem, tconv_buf, bkg_buf, dxpl_id) < 0)
+                if(H5Tconvert(dset->type_id, mem_type_id[0], (size_t)num_elem, tconv_buf, bkg_buf, dxpl_id) < 0)
                     HGOTO_ERROR(H5E_DATASET, H5E_CANTCONVERT, FAIL, "can't perform type conversion");
 
                 /* Scatter data to memory buffer if necessary */
@@ -1268,7 +1311,7 @@ H5VL_rados_dataset_read(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
                     scatter_cb_ud.buf = tconv_buf;
                     scatter_cb_ud.len = (size_t)num_elem * mem_type_size;
-                    if(H5Dscatter(H5VL_rados_scatter_cb, &scatter_cb_ud, mem_type_id, chunk_info[i].mspace_id, buf) < 0)
+                    if(H5Dscatter(H5VL_rados_scatter_cb, &scatter_cb_ud, mem_type_id[0], chunk_info[i].mspace_id, buf[0]) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't scatter data to read buffer");
                 } /* end if */
             } /* end else */
@@ -1308,12 +1351,11 @@ done:
 
 /*---------------------------------------------------------------------------*/
 static herr_t
-H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
-    hid_t file_space_id, hid_t H5VL_ATTR_UNUSED dxpl_id,
-    const void *buf, void H5VL_ATTR_UNUSED **req)
+H5VL_rados_dataset_write(size_t count, void *_dset[], hid_t mem_type_id[], hid_t mem_space_id[],
+    hid_t file_space_id[], hid_t dxpl_id, const void *buf[], void H5VL_ATTR_UNUSED **req)
 {
     H5VL_rados_select_chunk_info_t *chunk_info = NULL; /* Array of info for each chunk selected in the file */
-    H5VL_rados_dset_t *dset = (H5VL_rados_dset_t *)_dset;
+    H5VL_rados_dset_t *dset = NULL;
     int ndims;
     hsize_t dim[H5S_MAX_RANK];
     hid_t real_file_space_id;
@@ -1340,6 +1382,11 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
 
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
+    if (count != 1)
+        HGOTO_ERROR(H5E_DATASET, H5E_UNSUPPORTED, FAIL, "multi-dataset writes are unsupported");
+
+    dset = (H5VL_rados_dset_t *)_dset[0];
+
     /* Check for write access */
     if(!(dset->obj.item.file->flags & H5F_ACC_RDWR))
         HGOTO_ERROR(H5E_FILE, H5E_BADVALUE, FAIL, "no write intent on file");
@@ -1351,22 +1398,22 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get dimensions");
 
     /* Get "real" file space */
-    if(file_space_id == H5S_ALL)
+    if(file_space_id[0] == H5S_ALL)
         real_file_space_id = dset->space_id;
     else
-        real_file_space_id = file_space_id;
+        real_file_space_id = file_space_id[0];
 
     /* Get number of elements in selection */
     if((num_elem = H5Sget_select_npoints(real_file_space_id)) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get number of points in selection");
 
     /* Get "real" file space */
-    if(mem_space_id == H5S_ALL)
+    if(mem_space_id[0] == H5S_ALL)
         real_mem_space_id = real_file_space_id;
     else {
         hssize_t num_elem_file;
 
-        real_mem_space_id = mem_space_id;
+        real_mem_space_id = mem_space_id[0];
 
         /* Verify number of elements in memory selection matches file selection
          */
@@ -1381,7 +1428,7 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
         HGOTO_DONE(SUCCEED);
 
     /* Initialize type conversion */
-    if(H5VL_rados_tconv_init(dset->type_id, &file_type_size, mem_type_id, &mem_type_size, &types_equal, &reuse, &need_bkg, &fill_bkg) < 0)
+    if(H5VL_rados_tconv_init(dset->type_id, &file_type_size, mem_type_id[0], &mem_type_size, &types_equal, &reuse, &need_bkg, &fill_bkg) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't initialize type conversion");
 
     /* Check if the dataset actually has a chunked storage layout. If it does not, simply
@@ -1462,19 +1509,19 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                  * to check the extents because they cannot be the same.  We
                  * could also allow the case where the memory space is not
                  * H5S_ALL but is equivalent. */
-                if(mem_space_id == H5S_ALL && chunk_info_len == 1)
+                if(mem_space_id[0] == H5S_ALL && chunk_info_len == 1)
                     if((match_select = H5Sextent_equal(real_file_space_id, chunk_info[i].fspace_id)) < 0)
                         HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOMPARE, FAIL, "can't check if file and chunk dataspaces are equal");
 
                 /* Check for matching selections */
                 if(match_select) {
                     /* Build write op from file space */
-                    if(H5VL_rados_build_io_op_match(chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, NULL, buf, NULL, write_op) < 0)
+                    if(H5VL_rados_build_io_op_match(chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, NULL, buf[0], NULL, write_op) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS write op");
                 } /* end if */
                 else {
                     /* Build write op from file space and mem space */
-                    if(H5VL_rados_build_io_op_merge(chunk_info[i].mspace_id, chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, NULL, buf, NULL, write_op) < 0)
+                    if(H5VL_rados_build_io_op_merge(chunk_info[i].mspace_id, chunk_info[i].fspace_id, file_type_size, (size_t)num_elem, NULL, buf[0], NULL, write_op) < 0)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS write op");
                 } /* end else */
             } /* end if */
@@ -1506,11 +1553,11 @@ H5VL_rados_dataset_write(void *_dset, hid_t mem_type_id, hid_t mem_space_id,
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't generate RADOS write op");
 
                 /* Gather data to conversion buffer */
-                if(H5Dgather(chunk_info[i].mspace_id, buf, mem_type_id, (size_t)num_elem * mem_type_size, tconv_buf, NULL, NULL) < 0)
+                if(H5Dgather(chunk_info[i].mspace_id, buf[0], mem_type_id[0], (size_t)num_elem * mem_type_size, tconv_buf, NULL, NULL) < 0)
                     HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "can't gather data to conversion buffer");
 
                 /* Perform type conversion */
-                if(H5Tconvert(mem_type_id, dset->type_id, (size_t)num_elem, tconv_buf, bkg_buf, dxpl_id) < 0)
+                if(H5Tconvert(mem_type_id[0], dset->type_id, (size_t)num_elem, tconv_buf, bkg_buf, dxpl_id) < 0)
                     HGOTO_ERROR(H5E_DATASET, H5E_CANTCONVERT, FAIL, "can't perform type conversion");
             } /* end else */
 
@@ -1551,17 +1598,17 @@ done:
 
 /*---------------------------------------------------------------------------*/
 herr_t
-H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type, 
-    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req, va_list arguments)
+H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_args_t *arguments, 
+    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req)
 {
     H5VL_rados_dset_t *dset = (H5VL_rados_dset_t *)_dset;
 
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
-    switch (get_type) {
+    switch (arguments->op_type) {
         case H5VL_DATASET_GET_DCPL:
             {
-                hid_t *plist_id = va_arg(arguments, hid_t *);
+                hid_t *plist_id = &(arguments->args.get_dcpl.dcpl_id);
 
                 /* Retrieve the dataset's creation property list */
                 if((*plist_id = H5Pcopy(dset->dcpl_id)) < 0)
@@ -1571,7 +1618,7 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
             } /* end block */
         case H5VL_DATASET_GET_DAPL:
             {
-                hid_t *plist_id = va_arg(arguments, hid_t *);
+	        hid_t *plist_id = &(arguments->args.get_dapl.dapl_id);
 
                 /* Retrieve the dataset's access property list */
                 if((*plist_id = H5Pcopy(dset->dapl_id)) < 0)
@@ -1581,7 +1628,7 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
             } /* end block */
         case H5VL_DATASET_GET_SPACE:
             {
-                hid_t *ret_id = va_arg(arguments, hid_t *);
+	        hid_t *ret_id = &(arguments->args.get_space.space_id);
 
                 /* Retrieve the dataset's dataspace */
                 if((*ret_id = H5Scopy(dset->space_id)) < 0)
@@ -1590,7 +1637,7 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
             } /* end block */
         case H5VL_DATASET_GET_SPACE_STATUS:
             {
-                H5D_space_status_t *allocation = va_arg(arguments, H5D_space_status_t *);
+                H5D_space_status_t *allocation = arguments->args.get_space_status.status;
 
                 /* Retrieve the dataset's space status */
                 *allocation = H5D_SPACE_STATUS_NOT_ALLOCATED;
@@ -1598,7 +1645,7 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
             } /* end block */
         case H5VL_DATASET_GET_TYPE:
             {
-                hid_t *ret_id = va_arg(arguments, hid_t *);
+	        hid_t *ret_id = &(arguments->args.get_type.type_id);
 
                 /* Retrieve the dataset's datatype */
                 if((*ret_id = H5Tcopy(dset->type_id)) < 0)
@@ -1606,7 +1653,6 @@ H5VL_rados_dataset_get(void *_dset, H5VL_dataset_get_t get_type,
                 break;
             } /* end block */
         case H5VL_DATASET_GET_STORAGE_SIZE:
-        case H5VL_DATASET_GET_OFFSET:
         default:
             HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "can't get this type of information from dataset");
     } /* end switch */
@@ -1638,6 +1684,369 @@ H5VL_rados_dataset_close(void *_dset, hid_t H5VL_ATTR_UNUSED dxpl_id,
         if(dset->dapl_id != FAIL && H5Idec_ref(dset->dapl_id) < 0)
             HDONE_ERROR(H5E_DATASET, H5E_CANTDEC, FAIL, "failed to close plist");
         free(dset);
+    } /* end if */
+
+    FUNC_LEAVE_VOL
+}
+
+/*---------------------------------------------------------------------------*/
+static void *
+H5VL_rados_datatype_commit(void *_item,
+    const H5VL_loc_params_t H5VL_ATTR_UNUSED *loc_params, const char *name,
+    hid_t type_id, hid_t H5VL_ATTR_UNUSED lcpl_id,
+    hid_t tcpl_id, hid_t tapl_id, hid_t dxpl_id, void **req)
+{
+    H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
+    H5VL_rados_dtype_t *dtype = NULL;
+    H5VL_rados_group_t *target_grp = NULL;
+    uint8_t *md_buf = NULL;
+    hbool_t collective = item->file->collective;
+    int ret;
+
+    FUNC_ENTER_VOL(void *, NULL)
+
+    if(!_item)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
+    if(!loc_params)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
+    /* TODO currently does not support anonymous */
+    if(!name)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "datatype name is NULL");
+
+    /* Check for write access */
+    if(!(item->file->flags & H5F_ACC_RDWR))
+        HGOTO_ERROR(H5E_FILE, H5E_BADVALUE, NULL, "no write intent on file");
+ 
+    /* Check for collective access, if not already set by the file */
+    if(!collective)
+        if(H5Pget_all_coll_metadata_ops(tapl_id, &collective) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, NULL, "can't get collective access property");
+
+    /* Allocate the datatype object that is returned to the user */
+    if(NULL == (dtype = malloc(sizeof(H5VL_rados_dtype_t))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate RADOS datatype struct");
+    memset(dtype, 0, sizeof(H5VL_rados_dtype_t));
+    dtype->obj.item.type = H5I_DATATYPE;
+    dtype->obj.item.file = item->file;
+    dtype->obj.item.rc = 1;
+    dtype->type_id = FAIL;
+    dtype->tcpl_id = FAIL;
+    dtype->tapl_id = FAIL;
+
+    /* Generate datatype oid */
+    if(H5VL_rados_oid_create(item->file, item->file->max_oid + (uint64_t)1, H5I_DATATYPE, &dtype->obj.bin_oid, &dtype->obj.oid) < 0)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't generate datatype oid");
+
+    /* Update max_oid */
+    item->file->max_oid = H5VL_rados_oid_to_idx(dtype->obj.bin_oid);
+
+    /* Create datatype and write metadata if this process should */
+    if(!collective || (item->file->my_rank == 0)) {
+        const char *target_name = NULL;
+        H5VL_rados_link_val_t link_val;
+        uint8_t *p;
+        size_t type_size = 0;
+        size_t tcpl_size = 0;
+        size_t md_size = 0;
+
+        /* Traverse the path */
+        if(NULL == (target_grp = H5VL_rados_group_traverse_const(item, name, dxpl_id, req, &target_name, NULL, NULL)))
+            HGOTO_ERROR(H5E_DATATYPE, H5E_BADITER, NULL, "can't traverse path");
+
+        /* Create datatype */
+
+        /* Determine buffer sizes */
+        if(H5Tencode(type_id, NULL, &type_size) < 0)
+            HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of datatype");
+        if(H5Pencode2(tcpl_id, NULL, &tcpl_size, H5P_DEFAULT) < 0)
+            HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "can't determine serialized length of tcpl");
+        md_size = (3 * sizeof(uint64_t)) + type_size + tcpl_size;
+
+        /* Allocate metadata buffer */
+        if(NULL == (md_buf = (uint8_t *)malloc(md_size)))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate buffer for constant metadata");
+
+        /* Encode info lengths */
+        p = md_buf;
+        UINT64ENCODE(p, (uint64_t)type_size);
+        UINT64ENCODE(p, (uint64_t)tcpl_size);
+
+        /* Encode datatype */
+        if(H5Tencode(type_id, md_buf + (3 * sizeof(uint64_t)), &type_size) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTENCODE, NULL, "can't serialize datatype");
+
+        /* Encode TCPL */
+        if(H5Pencode2(tcpl_id, md_buf + (3 * sizeof(uint64_t)) + type_size, &tcpl_size, H5P_DEFAULT) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTENCODE, NULL, "can't serialize tcpl");
+
+        /* Write internal metadata to datatype */
+        if((ret = H5VL_rados_write_full(H5VL_rados_params_g.rados_ioctx, dtype->obj.oid, (const char *)md_buf, md_size)) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't write metadata to datatype: %s", strerror(-ret));
+
+        /* Mark max OID as dirty */
+        item->file->max_oid_dirty = TRUE;
+
+        /* Create link to datatype */
+        link_val.type = H5L_TYPE_HARD;
+        link_val.target.hard = dtype->obj.bin_oid;
+        if(H5VL_rados_link_write(target_grp, target_name, &link_val) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't create link to datatype");
+    } /* end if */
+
+    /* Finish setting up datatype struct */
+    if((dtype->type_id = H5Tcopy(type_id)) < 0)
+        HGOTO_ERROR(H5E_SYM, H5E_CANTCOPY, NULL, "failed to copy datatype");
+    if((dtype->tcpl_id = H5Pcopy(tcpl_id)) < 0)
+        HGOTO_ERROR(H5E_SYM, H5E_CANTCOPY, NULL, "failed to copy tcpl");
+    if((dtype->tapl_id = H5Pcopy(tapl_id)) < 0)
+        HGOTO_ERROR(H5E_SYM, H5E_CANTCOPY, NULL, "failed to copy tapl");
+
+    /* Set return value */
+    FUNC_RETURN_SET((void *)dtype);
+
+done:
+    /* Close target group */
+    if(target_grp && H5VL_rados_group_close(target_grp, dxpl_id, req) < 0)
+        HDONE_ERROR(H5E_DATATYPE, H5E_CLOSEERROR, NULL, "can't close group");
+
+    /* Cleanup on failure */
+    /* Destroy RADOS object if created before failure DSMINC */
+    if(FUNC_ERRORED)
+        /* Close datatype */
+        if(dtype && H5VL_rados_datatype_close(dtype, dxpl_id, req) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CLOSEERROR, NULL, "can't close datatype");
+
+    /* Free memory */
+    free(md_buf);
+
+    FUNC_LEAVE_VOL
+}
+
+static void *
+H5VL_rados_datatype_open(void *_item,
+    const H5VL_loc_params_t H5VL_ATTR_UNUSED *loc_params, const char *name,
+    hid_t tapl_id, hid_t dxpl_id, void **req)
+{
+    H5VL_rados_item_t *item = (H5VL_rados_item_t *)_item;
+    H5VL_rados_dtype_t *dtype = NULL;
+    H5VL_rados_group_t *target_grp = NULL;
+    const char *target_name = NULL;
+    uint64_t type_len = 0;
+    uint64_t tcpl_len = 0;
+    time_t pmtime = 0;
+    uint8_t tinfo_buf_static[H5VL_RADOS_TINFO_BUF_SIZE];
+    uint8_t *tinfo_buf_dyn = NULL;
+    uint8_t *tinfo_buf = tinfo_buf_static;
+    uint8_t *p;
+    hbool_t collective = item->file->collective;
+    hbool_t must_bcast = FALSE;
+    int ret;
+
+    FUNC_ENTER_VOL(void *, NULL)
+ 
+    if(!_item)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
+    if(!loc_params)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
+    /* TODO currently does not support anonymous */
+    if(!name)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "datatype name is NULL");
+
+    /* Check for collective access, if not already set by the file */
+    if(!collective)
+        if(H5Pget_all_coll_metadata_ops(tapl_id, &collective) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, NULL, "can't get collective access property");
+
+    /* Allocate the datatype object that is returned to the user */
+    if(NULL == (dtype = malloc(sizeof(H5VL_rados_dtype_t))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate RADOS datatype struct");
+    memset(dtype, 0, sizeof(H5VL_rados_dtype_t));
+    dtype->obj.item.type = H5I_DATATYPE;
+    dtype->obj.item.file = item->file;
+    dtype->obj.item.rc = 1;
+    dtype->type_id = FAIL;
+    dtype->tcpl_id = FAIL;
+    dtype->tapl_id = FAIL;
+
+    /* Check if we're actually opening the group or just receiving the datatype
+     * info from the leader */
+    if(!collective || (item->file->my_rank == 0)) {
+        uint64_t md_len = 0;
+
+        if(collective && (item->file->num_procs > 1))
+            must_bcast = TRUE;
+
+        /* Check for open by address */
+        if(H5VL_OBJECT_BY_TOKEN == loc_params->type) {
+            /* Generate oid from address */
+            dtype->obj.bin_oid = *(uint64_t *)loc_params->loc_data.loc_by_token.token;
+            if(H5VL_rados_oid_create_string(item->file, dtype->obj.bin_oid, &dtype->obj.oid) < 0)
+                HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't encode string oid");
+        } /* end if */
+        else {
+            /* Open using name parameter */
+            /* Traverse the path */
+            if(NULL == (target_grp = H5VL_rados_group_traverse_const(item, name, dxpl_id, req, &target_name, NULL, NULL)))
+                HGOTO_ERROR(H5E_DATATYPE, H5E_BADITER, NULL, "can't traverse path");
+
+            /* Follow link to datatype */
+            if(H5VL_rados_link_follow(target_grp, target_name, dxpl_id, req, &dtype->obj.bin_oid) < 0)
+                HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't follow link to datatype");
+
+            /* Create string oid */
+            if(H5VL_rados_oid_create_string(item->file, dtype->obj.bin_oid, &dtype->obj.oid) < 0)
+                HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "can't encode string oid");
+        } /* end else */
+
+        /* Get the object size and time */
+        if((ret = H5VL_rados_stat(H5VL_rados_params_g.rados_ioctx, dtype->obj.oid, &md_len, &pmtime)) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, NULL, "can't read metadata size from group: %s", strerror(-ret));
+
+        /* Check for metadata not found */
+        if(md_len == (uint64_t)0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_NOTFOUND, NULL, "internal metadata not found");
+
+        /* Allocate dynamic buffer if necessary */
+        if(md_len + sizeof(uint64_t) > sizeof(tinfo_buf_static)) {
+            if(NULL == (tinfo_buf_dyn = (uint8_t *)malloc(md_len + sizeof(uint64_t))))
+                HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate buffer for constant datatype metadata");
+            tinfo_buf = tinfo_buf_dyn;
+        } /* end if */
+
+        /* Read internal metadata from datatype */
+        if((ret = H5VL_rados_read(H5VL_rados_params_g.rados_ioctx, dtype->obj.oid, (char *)(tinfo_buf + sizeof(uint64_t)), md_len, 0)) < 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, NULL, "can't read metadata from datatype: %s", strerror(-ret));
+
+        /* Decode info lengths */
+        p = (uint8_t *)tinfo_buf + sizeof(uint64_t);
+        UINT64DECODE(p, type_len);
+        UINT64DECODE(p, tcpl_len);
+        if(type_len + tcpl_len + (3 * sizeof(uint64_t)) != md_len)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, NULL, "datatype internal metadata size mismatch");
+
+        /* Broadcast datatype info if there are other processes that need it */
+        if(collective && (item->file->num_procs > 1)) {
+            assert(tinfo_buf);
+            assert(sizeof(tinfo_buf_static) >= 4 * sizeof(uint64_t));
+
+            /* Encode oid */
+            p = tinfo_buf;
+            UINT64ENCODE(p, dtype->obj.bin_oid);
+
+            /* MPI_Bcast tinfo_buf */
+            assert((md_len + sizeof(uint64_t) >= sizeof(tinfo_buf_static)) || (tinfo_buf == tinfo_buf_static));
+            if(MPI_SUCCESS != MPI_Bcast((char *)tinfo_buf, sizeof(tinfo_buf_static), MPI_BYTE, 0, item->file->comm))
+                HGOTO_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast datatype info");
+
+            /* Need a second bcast if it did not fit in the receivers' static
+             * buffer */
+            if(tinfo_buf != tinfo_buf_static) {
+                assert(md_len + sizeof(uint64_t) > sizeof(tinfo_buf_static));
+                if(MPI_SUCCESS != MPI_Bcast((char *)tinfo_buf + (4 * sizeof(uint64_t)), (int)(md_len - (3 * sizeof(uint64_t))), MPI_BYTE, 0, item->file->comm))
+                    HGOTO_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast datatype info (second bcast)");
+            } /* end if */
+
+            /* Reset p */
+            p = tinfo_buf + (4 * sizeof(uint64_t));
+        } /* end if */
+    } /* end if */
+    else {
+        uint64_t tot_len = 0;
+
+        /* Receive datatype info */
+        if(MPI_SUCCESS != MPI_Bcast((char *)tinfo_buf, sizeof(tinfo_buf_static), MPI_BYTE, 0, item->file->comm))
+            HGOTO_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast datatype info");
+
+        /* Decode oid */
+        p = tinfo_buf_static;
+        UINT64DECODE(p, dtype->obj.bin_oid);
+
+        /* Decode serialized info lengths */
+        UINT64DECODE(p, type_len);
+        UINT64DECODE(p, tcpl_len);
+        tot_len = type_len + tcpl_len;
+
+        /* Check for type_len set to 0 - indicates failure */
+        if(type_len == 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINIT, NULL, "lead process failed to open datatype");
+
+        /* Check if we need to perform another bcast */
+        if(tot_len + (4 * sizeof(uint64_t)) > sizeof(tinfo_buf_static)) {
+            /* Allocate a dynamic buffer if necessary */
+            if(tot_len > sizeof(tinfo_buf_static)) {
+                if(NULL == (tinfo_buf_dyn = (uint8_t *)malloc(tot_len)))
+                    HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, NULL, "can't allocate space for datatype info");
+                tinfo_buf = tinfo_buf_dyn;
+            } /* end if */
+
+            /* Receive datatype info */
+            if(MPI_SUCCESS != MPI_Bcast((char *)tinfo_buf, (int)tot_len, MPI_BYTE, 0, item->file->comm))
+                HGOTO_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast datatype info (second bcast)");
+
+            p = tinfo_buf;
+        } /* end if */
+    } /* end else */
+
+    /* Decode datatype and TCPL */
+    if((dtype->type_id = H5Tdecode(p)) < 0)
+        HGOTO_ERROR(H5E_ARGS, H5E_CANTDECODE, NULL, "can't deserialize datatype");
+    p += type_len;
+    if((dtype->tcpl_id = H5Pdecode(p)) < 0)
+        HGOTO_ERROR(H5E_ARGS, H5E_CANTDECODE, NULL, "can't deserialize datatype creation property list");
+
+    /* Finish setting up datatype struct */
+    if((dtype->tapl_id = H5Pcopy(tapl_id)) < 0)
+        HGOTO_ERROR(H5E_SYM, H5E_CANTCOPY, NULL, "failed to copy tapl");
+
+    /* Set return value */
+    FUNC_RETURN_SET((void *)dtype);
+
+done:
+    /* Cleanup on failure */
+    if(FUNC_ERRORED) {
+        /* Bcast tinfo_buf as '0' if necessary - this will trigger failures in
+         * in other processes so we do not need to do the second bcast. */
+        if(must_bcast) {
+            memset(tinfo_buf_static, 0, sizeof(tinfo_buf_static));
+            if(MPI_SUCCESS != MPI_Bcast(tinfo_buf_static, sizeof(tinfo_buf_static), MPI_BYTE, 0, item->file->comm))
+                HDONE_ERROR(H5E_DATATYPE, H5E_MPI, NULL, "can't bcast empty datatype info");
+        } /* end if */
+
+        /* Close datatype */
+        if(dtype && H5VL_rados_datatype_close(dtype, dxpl_id, req) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CLOSEERROR, NULL, "can't close datatype");
+    } /* end if */
+
+    /* Close target group */
+    if(target_grp && H5VL_rados_group_close(target_grp, dxpl_id, req) < 0)
+        HDONE_ERROR(H5E_DATATYPE, H5E_CLOSEERROR, NULL, "can't close group");
+
+    /* Free memory */
+    free(tinfo_buf_dyn);
+
+    FUNC_LEAVE_VOL
+}
+
+static herr_t
+H5VL_rados_datatype_close(void *_dtype, hid_t H5VL_ATTR_UNUSED dxpl_id,
+    void H5VL_ATTR_UNUSED **req)
+{
+    H5VL_rados_dtype_t *dtype = (H5VL_rados_dtype_t *)_dtype;
+
+    FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+    assert(dtype);
+
+    if(--dtype->obj.item.rc == 0) {
+        /* Free datatype data structures */
+        free(dtype->obj.oid);
+        if(dtype->type_id != FAIL && H5Idec_ref(dtype->type_id) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CANTDEC, FAIL, "failed to close datatype");
+        if(dtype->tcpl_id != FAIL && H5Idec_ref(dtype->tcpl_id) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CANTDEC, FAIL, "failed to close plist");
+        if(dtype->tapl_id != FAIL && H5Idec_ref(dtype->tapl_id) < 0)
+            HDONE_ERROR(H5E_DATATYPE, H5E_CANTDEC, FAIL, "failed to close plist");
+        free(dtype);
     } /* end if */
 
     FUNC_LEAVE_VOL
@@ -1773,7 +2182,6 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
     if(NULL == (file = malloc(sizeof(H5VL_rados_file_t))))
         HGOTO_ERROR(H5E_FILE, H5E_CANTALLOC, NULL, "can't allocate RADOS file struct");
     memset(file, 0, sizeof(H5VL_rados_file_t));
-    //file->glob_md_oh = DAOS_HDL_INVAL;
     file->root_grp = NULL;
     file->fcpl_id = FAIL;
     file->fapl_id = FAIL;
@@ -1919,7 +2327,7 @@ H5VL_rados_file_open(const char *name, unsigned flags, hid_t fapl_id,
      * Point to it. */
     file->fcpl_id = file->root_grp->gcpl_id;
     if(H5Iinc_ref(file->fcpl_id) < 0)
-        HGOTO_ERROR(H5E_ATOM, H5E_CANTINC, NULL, "can't increment FCPL ref count");
+        HGOTO_ERROR(H5E_ID, H5E_CANTINC, NULL, "can't increment FCPL ref count");
 
     /* Free info */
     if(info && H5VL_rados_info_free(info) < 0)
@@ -1957,13 +2365,102 @@ done:
 
 /*---------------------------------------------------------------------------*/
 static herr_t
-H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
-    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req,
-    va_list H5VL_ATTR_UNUSED arguments)
+H5VL_rados_file_get(void *_item, H5VL_file_get_args_t *get_args, hid_t H5VL_ATTR_UNUSED dxpl_id,
+		 void H5VL_ATTR_UNUSED **req)
+{
+  H5VL_rados_item_t *item      = (H5VL_rados_item_t *)_item;
+  H5VL_rados_file_t *file    = NULL;
+  /* herr_t          ret_value = SUCCEED; */
+
+  FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+  if (!_item)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "VOL object is NULL");
+  if (!get_args)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "Invalid operation arguments");
+
+  if (get_args->op_type == H5VL_FILE_GET_NAME) {
+    file = item->file;
+
+    if (H5I_FILE != item->type && H5I_GROUP != item->type && H5I_DATATYPE != item->type &&
+	H5I_DATASET != item->type && H5I_ATTR != item->type)
+      HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
+		   "object is not a file, group, datatype, dataset or attribute");
+  }
+  else {
+    file = (H5VL_rados_file_t *)item;
+    if (H5I_FILE != file->item.type)
+      HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "object is not a file");
+  }
+
+  switch (get_args->op_type) {
+    /* H5Fget_access_plist */
+  case H5VL_FILE_GET_FAPL: {
+    hid_t *ret_id = &get_args->args.get_fapl.fapl_id;
+
+    if ((*ret_id = H5Pcopy(file->fapl_id)) < 0)
+      HGOTO_ERROR(H5E_PLIST, H5E_CANTCOPY, FAIL, "can't get file's FAPL");
+
+    break;
+  } /* H5VL_FILE_GET_FAPL */
+
+    /* H5Fget_create_plist */
+  case H5VL_FILE_GET_FCPL: {
+    hid_t *ret_id = &get_args->args.get_fcpl.fcpl_id;
+
+    if ((*ret_id = H5Pcopy(file->fcpl_id)) < 0)
+      HGOTO_ERROR(H5E_PLIST, H5E_CANTCOPY, FAIL, "can't get file's FCPL");
+
+    break;
+  } /* H5VL_FILE_GET_FCPL */
+
+    /* H5Fget_intent */
+  case H5VL_FILE_GET_INTENT: {
+    unsigned *ret_intent = get_args->args.get_intent.flags;
+
+    if ((file->flags & H5F_ACC_RDWR) == H5F_ACC_RDWR)
+      *ret_intent = H5F_ACC_RDWR;
+    else
+      *ret_intent = H5F_ACC_RDONLY;
+
+    break;
+  } /* H5VL_FILE_GET_INTENT */
+
+    /* H5Fget_name */
+  case H5VL_FILE_GET_NAME: {
+    H5I_type_t obj_type      = get_args->args.get_name.type;
+    size_t     name_buf_size = get_args->args.get_name.buf_size;
+    char *     name_buf      = get_args->args.get_name.buf;
+    size_t *   ret_size      = get_args->args.get_name.file_name_len;
+
+    if (H5I_FILE != obj_type)
+      file = file->item.file;
+
+    *ret_size = strlen(file->file_name);
+
+    if (name_buf) {
+      strncpy(name_buf, file->file_name, name_buf_size - 1);
+      name_buf[name_buf_size - 1] = '\0';
+    } /* end if */
+
+    break;
+  } /* H5VL_FILE_GET_NAME */
+
+  default:
+    HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "invalid or unsupported file get operation");
+  } /* end switch */
+
+ done:
+  FUNC_LEAVE_VOL
+} /* end H5_rados_file_get() */
+
+static herr_t
+H5VL_rados_file_specific(void *item, H5VL_file_specific_args_t *arguments,
+    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req)
 {
     FUNC_ENTER_VOL(herr_t, SUCCEED)
 
-    switch (specific_type) {
+    switch (arguments->op_type) {
         /* H5Fflush` */
         case H5VL_FILE_FLUSH:
         {
@@ -1977,9 +2474,9 @@ H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
         /* H5Fis_accessible */
         case H5VL_FILE_IS_ACCESSIBLE:
         {
-            hid_t       fapl_id = va_arg(arguments, hid_t);
-            const char *name    = va_arg(arguments, const char *);
-            htri_t     *ret     = va_arg(arguments, htri_t *);
+            hid_t       fapl_id = arguments->args.is_accessible.fapl_id;
+            const char *name    = arguments->args.is_accessible.filename;
+            hbool_t     *ret     = arguments->args.is_accessible.accessible;
             char       *glob_md_oid = NULL;
             uint64_t    gcpl_len = 0;
             time_t      pmtime;
@@ -2003,11 +2500,20 @@ H5VL_rados_file_specific(void *item, H5VL_file_specific_t specific_type,
             break;
         }
 
-        /* H5Fmount */
-        case H5VL_FILE_MOUNT:
-        /* H5Fmount */
-        case H5VL_FILE_UNMOUNT:
         case H5VL_FILE_REOPEN:
+        /* { */
+	/*   H5VL_rados_file_t *file = ((H5VL_rados_item_t *)item)->file; */
+	/*   unsigned reopen_flags = file->flags; */
+	/*   void **  ret_file     = arguments->args.reopen.file; */
+
+	/*   /\* Strip any file creation-related flags *\/ */
+	/*   reopen_flags &= ~(H5F_ACC_TRUNC | H5F_ACC_EXCL | H5F_ACC_CREAT); */
+	/*   if (NULL == */
+	/*       (*ret_file = H5VL_rados_file_open(file->file_name, reopen_flags, file->fapl_id, dxpl_id, req))) */
+	/*     HGOTO_ERROR(H5E_FILE, H5E_CANTOPENOBJ, FAIL, "can't reopen file"); */
+
+	/*   break; */
+	/* } */
         default:
             HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "invalid or unsupported specific operation");
     } /* end switch */
@@ -2057,7 +2563,7 @@ H5VL_rados_group_create(void *_item,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "group name is NULL");
 
@@ -2096,6 +2602,34 @@ done:
     FUNC_LEAVE_VOL
 }
 
+static herr_t H5VL_rados_group_get(void *_grp, H5VL_group_get_args_t *get_args,
+    hid_t H5VL_ATTR_UNUSED dxpl_id, void H5VL_ATTR_UNUSED **req)
+{
+    H5VL_rados_group_t *grp = (H5VL_rados_group_t *)_grp;
+
+    FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+    switch (get_args->op_type) {
+        case H5VL_GROUP_GET_GCPL:
+            {
+                hid_t *plist_id = &(get_args->args.get_gcpl.gcpl_id);
+
+                /* Retrieve the group's creation property list */
+                if((*plist_id = H5Pcopy(grp->gcpl_id)) < 0)
+                    HGOTO_ERROR(H5E_SYM, H5E_CANTGET, FAIL, "can't get grp creation property list");
+
+                break;
+            } /* end block */
+        case H5VL_GROUP_GET_INFO:
+	  // TODO: on hold until links are implemented, as group_info contains link info
+        default:
+            HGOTO_ERROR(H5E_VOL, H5E_UNSUPPORTED, FAIL, "can't get this type of information from group");
+    } /* end switch */
+
+done:
+    FUNC_LEAVE_VOL
+}
+
 /*---------------------------------------------------------------------------*/
 static void *
 H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
@@ -2119,7 +2653,7 @@ H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "parent object is NULL");
     if(!loc_params)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "location parameters object is NULL");
-    /* TODO currenty does not support anonymous */
+    /* TODO currently does not support anonymous */
     if(!name)
         HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, NULL, "group name is NULL");
 
@@ -2135,9 +2669,9 @@ H5VL_rados_group_open(void *_item, const H5VL_loc_params_t *loc_params,
             must_bcast = TRUE;
 
         /* Check for open by address */
-        if(H5VL_OBJECT_BY_ADDR == loc_params->type) {
+        if(H5VL_OBJECT_BY_TOKEN == loc_params->type) {
             /* Generate oid from address */
-            oid = (uint64_t)loc_params->loc_data.loc_by_addr.addr;
+            oid = *(uint64_t *)loc_params->loc_data.loc_by_token.token;
 
             /* Open group */
             if(NULL == (grp = (H5VL_rados_group_t *)H5VL_rados_group_open_helper(item->file, oid, gapl_id, dxpl_id, req, (collective && (item->file->num_procs > 1)) ? (void **)&gcpl_buf : NULL, &gcpl_len)))
@@ -2301,6 +2835,60 @@ H5VL_rados_group_close(void *_grp, hid_t H5VL_ATTR_UNUSED dxpl_id,
     FUNC_LEAVE_VOL
 }
 
+/* Introspection routines */
+static herr_t
+H5_rados_get_conn_cls(void *item, H5VL_get_conn_lvl_t H5VL_ATTR_UNUSED lvl, const H5VL_class_t **conn_cls)
+{
+  FUNC_ENTER_VOL(herr_t, SUCCEED)
+    
+  if (!item)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "item parameter not supplied");
+  if (!conn_cls)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "conn_cls parameter not supplied");
+
+  *conn_cls = &H5VL_rados_g;
+
+ done:
+  FUNC_LEAVE_VOL
+}
+
+static herr_t
+H5_rados_get_cap_flags(const void H5VL_ATTR_UNUSED *info, uint64_t *cap_flags)
+{
+  FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+  if (!cap_flags)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "invalid cap_flags parameter");
+
+  *cap_flags = H5VL_rados_g.cap_flags;
+
+ done:
+  FUNC_LEAVE_VOL
+}
+
+static herr_t
+H5_rados_opt_query(void *item, H5VL_subclass_t H5VL_ATTR_UNUSED cls, int opt_type,
+		   uint64_t *supported)
+{
+  FUNC_ENTER_VOL(herr_t, SUCCEED)
+
+  if (!item)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "\"item\" parameter not supplied");
+  if (!supported)
+    HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "output parameter not supplied");
+
+  switch(opt_type) {
+  default: {
+    // Currently, we don't claim to support anything
+    *supported = 0;
+    break;
+  }
+  }
+
+ done:
+  FUNC_LEAVE_VOL
+}
+
 /**
  * -------------------------------------------------------------------------
  * -------------------------------------------------------------------------
@@ -2462,7 +3050,8 @@ H5VL_rados_oid_create_binary(uint64_t idx, H5I_type_t obj_type,
     if(obj_type == H5I_GROUP)
         *bin_oid |= H5VL_RADOS_TYPE_GRP;
     else if(obj_type == H5I_DATASET)
-        *bin_oid |= H5VL_RADOS_TYPE_DSET;
+        *bin_oid |= H5VL_RADOS_TYPE_DSET
+	  ;
     else {
         assert(obj_type == H5I_DATATYPE);
         *bin_oid |= H5VL_RADOS_TYPE_DTYPE;
@@ -3846,7 +4435,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
     for (i = 0; num_sel_points_cast;) {
         htri_t intersect = FALSE;
 
-        if((intersect = H5Shyper_intersect_block(file_space_id, start_coords, end_coords)) < 0)
+        if((intersect = H5Sselect_intersect_block(file_space_id, start_coords, end_coords)) < 0)
             HGOTO_ERROR(H5E_DATASPACE, H5E_BADVALUE, FAIL, "cannot determine intersection");
         /* Check for intersection of file selection and "chunk". If there is
          * an intersection, set up a valid memory and file space for the chunk. */
@@ -3884,13 +4473,17 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
             } /* end if */
 
             /* Resize chunk's dataspace dimensions to size of chunk */
-            if (H5Sset_extent_real(tmp_chunk_fspace_id, chunk_dims) < 0) {
+	    if (H5Sset_extent_simple(tmp_chunk_fspace_id, fspace_ndims, chunk_dims, NULL) < 0) {
                 H5Sclose(tmp_chunk_fspace_id);
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk dimensions");
             } /* end if */
 
             /* Move selection back to have correct offset in chunk */
-            if (H5Sselect_adjust_u(tmp_chunk_fspace_id, start_coords) < 0) {
+	    hssize_t sstart_coords [H5O_LAYOUT_NDIMS]; // FIXME this is dirty, just to get it to compile, probably have to think of something more elegant in the long run
+	    for (i = 0; i < H5O_LAYOUT_NDIMS; i++) {
+	      sstart_coords[i] = (hssize_t) start_coords[i];
+	    }
+            if (H5Sselect_adjust(tmp_chunk_fspace_id, sstart_coords) < 0) {
                 H5Sclose(tmp_chunk_fspace_id);
                 HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk selection");
             } /* end if */
@@ -3910,10 +4503,11 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy memory space");
 
                 /* Release the current selection */
-                if (H5Sselect_release(tmp_chunk_mspace_id) < 0) {
-                    H5Sclose(tmp_chunk_mspace_id);
-                    HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection");
-                } /* end if */
+		//  This shouldn't be necessary any more, release is done inside of copy now
+                /* if (H5Sselect_release(tmp_chunk_mspace_id) < 0) { */
+		/*   H5Sclose(tmp_chunk_mspace_id); */
+                /*     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to release selection"); */
+                /* } /\* end if *\/ */
 
                 /* Copy the chunk's file space selection to its memory space selection */
                 if (H5Sselect_copy(tmp_chunk_mspace_id, tmp_chunk_fspace_id) < 0) {
@@ -3928,7 +4522,7 @@ H5VL_rados_get_selected_chunk_info(hid_t dcpl,
                 } /* end for */
 
                 /* Adjust the selection */
-                if (H5Shyper_adjust_s(tmp_chunk_mspace_id, chunk_mem_space_adjust) < 0) {
+                if (H5Sselect_adjust(tmp_chunk_mspace_id, chunk_mem_space_adjust) < 0) {
                     H5Sclose(tmp_chunk_mspace_id);
                     HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "can't adjust chunk memory space selection");
                 } /* end if */
