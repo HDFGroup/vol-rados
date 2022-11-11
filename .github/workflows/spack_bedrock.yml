@@ -1,4 +1,4 @@
-name: spack mobject+bedrock
+name: spack mobject@main+bedrock
 
 on:
   push:
