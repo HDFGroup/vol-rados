@@ -74,5 +74,6 @@ jobs:
         spack load hdf5
         mkdir src/build
         cd src/build
-        cmake ..
+        cmake -D BUILD_TESTING=ON ..
         make
+        make test
