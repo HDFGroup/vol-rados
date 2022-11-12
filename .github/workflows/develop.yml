@@ -33,12 +33,11 @@ jobs:
 
     - name: Get Sources
       uses: actions/checkout@v3
-
     - name: Checkout Spack
       uses: actions/checkout@v3
       with:
         repository: hyoklee/spack
-        path: ./spack
+        path: ../spack
     - name: Checkout mochi-spack-packages
       uses: actions/checkout@v3
       with:
@@ -46,7 +45,7 @@ jobs:
         path: ./mochi-spack-packages
     - name: Run a multi-line script
       run: |
-        . ./spack/share/spack/setup-env.sh
+        . ../spack/share/spack/setup-env.sh
         spack compiler find
         spack external find autoconf
         spack external find automake
