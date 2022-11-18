@@ -76,7 +76,7 @@ jobs:
         spack install hdf5@develop        
         spack load mobject
         spack load hdf5
-        spack view --verbose symlink install mobject@develop+bedrock
+        spack view --verbose symlink install mobject@develop+bedrock -i
         mkdir src/build
         cd src/build
         cmake -DCMAKE_INSTALL_PREFIX=$PWD/install .. 
