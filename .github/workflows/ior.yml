@@ -82,7 +82,7 @@ jobs:
         cmake -DCMAKE_INSTALL_PREFIX=$PWD/install .. 
         make install
         cd $PWD/ior
-        ./boostrap
+        ./bootstrap
         ./configure --prefix=$PWD/install --with-hdf5=$PWD/install 
         make
         make check
