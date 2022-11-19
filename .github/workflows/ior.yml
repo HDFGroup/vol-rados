@@ -38,6 +38,7 @@ jobs:
     - name: Get IOR
       uses: actions/checkout@v3
       with:
+        repository: hpc/ior
         path: ./ior
     - name: Checkout Spack
       uses: actions/checkout@v3
