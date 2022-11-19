@@ -89,7 +89,7 @@ jobs:
         make check
         make install
         ls $HOME/install/bin
-        cd ../../src
+        cd ../src
         ls
         sudo ./ci.sh
         
