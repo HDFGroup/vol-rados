@@ -25,13 +25,13 @@ mkdir /usr/local/tmp
 echo "Running sysctl"
 /usr/sbin/sysctl kernel.yama.ptrace_scope=0
 
-echo "Testing using make check"
-make check
+echo "Testing using ior"
+export HDF5_VOL_CONNECTOR=rados
+export HDF5_PLUGIN_PATH=/home/runner/install/bin/
 export MOBJECT_CLUSTER_FILE=/home/runner/mobject.ssg
 
 bake-mkpool -s 50M /dev/shm/mobject.dat
 bedrock na+sm -c /home/runner/work/vol-rados/vol-rados/config.json -v trace &
-ior -g -a RADOS -t 64k -b 128k --rados.user=foo --rados.pool=bar --rados.conf $MOBJECT_CLUSTER_FILE
-# ior -g -a HDF5 -t 64k -b 128k
+ior -g -a HDF5 -t 64k -b 128k
 
 

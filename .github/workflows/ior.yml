@@ -92,5 +92,3 @@ jobs:
         cd ../src
         ls
         sudo ./ci.sh
-        
-
