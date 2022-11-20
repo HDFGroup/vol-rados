@@ -83,8 +83,9 @@ jobs:
         cmake -DCMAKE_INSTALL_PREFIX=$HOME/install .. 
         make install
         cd ../../ior
+        ls /home/runner/install/include
         ./bootstrap
-        ./configure --prefix=$HOME/install --with-hdf5=$HOME/install 
+        ./configure --prefix=$HOME/install --with-hdf5  CFLAGS="-I /home/runner/install/include" LDFLAGS="-L /home/runner/install/lib"
         make
         make check
         make install
