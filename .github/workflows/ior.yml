@@ -88,6 +88,7 @@ jobs:
         ./bootstrap
         ./configure --prefix=$HOME/install --with-hdf5  CFLAGS="-I /home/runner/install/include" LDFLAGS="-L /home/runner/install/lib"
         make
+        make install
         ls $HOME/install/bin
         cd ../src
         ls
