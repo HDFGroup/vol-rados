@@ -78,7 +78,7 @@ jobs:
         spack load mobject
         spack load hdf5
         spack view --verbose symlink $HOME/install mobject@develop+bedrock -i
-        mkdir src/build
+        spack view --verbose symlink $HOME/install hdf5@develop -i
         cd src/build
         cmake -DCMAKE_INSTALL_PREFIX=$HOME/install .. 
         make install
