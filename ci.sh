@@ -5,8 +5,10 @@
 # This script assumes that Action installed all dependencies under /home/runner/install.
 #
 # Author: Hyokyung Lee (hyoklee@hdfgroup.org)
-# Last Update: 2022-11-19
+# Last Update: 2022-11-21
 
+echo "Checking PWD"
+echo $PWD
 
 echo "Checking /home/runner/install/bin"
 ls /home/runner/install/bin
@@ -31,7 +33,7 @@ export HDF5_PLUGIN_PATH=/home/runner/install/bin/
 export MOBJECT_CLUSTER_FILE=/home/runner/mobject.ssg
 
 bake-mkpool -s 50M /dev/shm/mobject.dat
-bedrock na+sm -c /home/runner/work/vol-rados/src/config.json -v trace &
+bedrock na+sm -c $PWD/config.json -v trace &
 ior -g -a HDF5 -t 64k -b 128k
 
 
