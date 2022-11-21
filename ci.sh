@@ -31,7 +31,7 @@ export HDF5_PLUGIN_PATH=/home/runner/install/bin/
 export MOBJECT_CLUSTER_FILE=/home/runner/mobject.ssg
 
 bake-mkpool -s 50M /dev/shm/mobject.dat
-bedrock na+sm -c /home/runner/work/vol-rados/vol-rados/config.json -v trace &
+bedrock na+sm -c /home/runner/work/vol-rados/src/config.json -v trace &
 ior -g -a HDF5 -t 64k -b 128k
 
 
