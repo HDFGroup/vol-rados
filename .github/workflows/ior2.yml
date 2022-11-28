@@ -1,0 +1,95 @@
+name: ior
+
+on:
+  push:
+    branches: [ master ]
+    paths-ignore:
+    - 'doc/**'
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install APT Dependencies
+      run: |
+        sudo apt update
+        sudo apt-get install -y autoconf
+        sudo apt-get install -y automake
+        sudo apt-get install -y cmake
+        sudo apt-get install -y libtool
+        sudo apt-get install -y libtool-bin
+        sudo apt-get install -y mpich
+        sudo apt-get install -y zlib1g-dev
+        sudo apt-get install -y diffutils
+        sudo apt-get install -y libdb-dev
+        sudo apt-get install -y libedit-dev
+        sudo apt-get install -y libncurses6
+        sudo apt-get install -y libxml2-dev
+        sudo apt-get install -y mpich
+        sudo apt-get install -y openssl
+        sudo apt-get install -y libboost-dev
+    - name: Get Sources
+      uses: actions/checkout@v3
+      with:
+        path: ./src
+    - name: Checkout IOR
+      uses: actions/checkout@v3
+      with:
+        repository: hpc/ior
+        path: ./ior
+    - name: Checkout Spack
+      uses: actions/checkout@v3
+      with:
+        repository: spack/spack
+        path: ./spack
+    - name: Checkout mochi-spack-packages
+      uses: actions/checkout@v3
+      with:
+        repository: mochi-hpc/mochi-spack-packages
+        path: ./mochi-spack-packages
+    - name: Test IOR
+      run: |
+        . ./spack/share/spack/setup-env.sh
+        spack compiler find
+        spack external find autoconf
+        spack external find automake
+        spack external find berkeley-db
+        spack external find boost
+        spack external find cmake
+        spack external find diffutils
+        spack external find libedit
+        spack external find libtool
+        spack external find libiconv
+        spack external find libxml2
+        spack external find m4
+        spack external find mpich
+        spack external find ncurses
+        spack external find openssl
+        spack external find perl
+        spack external find pkgconf
+        spack external find zlib
+        spack external find xz
+        spack repo add ./mochi-spack-packages
+        spack install mobject@develop+bedrock
+        spack install hdf5@develop        
+        spack load mobject
+        spack load hdf5
+        spack view --verbose symlink $HOME/install mobject@develop+bedrock -i
+        spack view --verbose symlink $HOME/install hdf5@develop -i
+        mkdir src/build
+        cd src/build
+        cmake -DCMAKE_INSTALL_PREFIX=$HOME/install .. 
+        make install
+        cd ../../ior
+        ls /home/runner/install/include
+        ./bootstrap
+        ./configure --prefix=$HOME/install --with-hdf5  CFLAGS="-I /home/runner/install/include" LDFLAGS="-L /home/runner/install/lib"
+        make
+        make install
+        ls $HOME/install/bin
+        cd ../src
+        ls
+        sudo ./ci2.sh

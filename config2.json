@@ -1,0 +1,90 @@
+{
+    "ssg" : [
+        {
+            "name" : "mobject",
+            "bootstrap" : "init",
+            "group_file" : "/home/runner/mobject.ssg",
+            "swim" : { "disabled" : true }
+        }
+    ],
+    "libraries" : {
+        "yokan"   : "libyokan-bedrock-module.so",
+        "bake"    : "libbake-bedrock.so",
+        "mobject" : "/home/runner/install/lib/libmobject-bedrock.so"
+    },
+    "abt_io" : [
+        {
+            "name" : "bake_abt_io",
+            "pool" : "__primary__"
+        }
+    ],
+    "providers" : [
+        {
+            "name" : "metadata",
+            "type" : "yokan",
+            "provider_id" : 0,
+            "config" : {
+                "databases" : [
+                    {
+                        "name" : "mobject_oid_map",
+                        "type" : "map",
+                        "config" : {
+                            "comparator" : "/home/runner/install/lib/libmobject-comparators.so:mobject_oid_map_compare"
+                        }
+                    },
+                    {
+                        "name" : "mobject_name_map",
+                        "type" : "map",
+                        "config" : {
+                            "comparator" : "/home/runner/install/lib/libmobject-comparators.so:mobject_name_map_compare"
+                        }
+                    },
+                    {
+                        "name" : "mobject_seg_map",
+                        "type" : "map",
+                        "config" : {
+                            "comparator" : "/home/runner/install/lib/libmobject-comparators.so:mobject_seg_map_compare"
+                        }
+                    },
+                    {
+                        "name" : "mobject_omap_map",
+                        "type" : "map",
+                        "config" : {
+                            "comparator" : "/home/runner/install/lib/libmobject-comparators.so:mobject_omap_map_compare"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name" : "storage",
+            "type" : "bake",
+            "provider_id" : 0,
+            "config" : {
+                "pipeline_enable" : true,
+                "pipeline_npools" : 4,
+                "pipeline_nbuffers_per_pool" : 32,
+                "pipeline_first_buffer_size" : 65536,
+                "pipeline_multiplier" : 4,
+                "file_backend": {
+                    "targets": [
+                        "/tmp/mobject.dat"
+                    ]
+                }
+            },
+            "dependencies" : {
+                "abt_io" : "bake_abt_io"
+            }
+        },
+        {
+            "name" : "coordinator",
+            "type" : "mobject",
+            "provider_id" : 1,
+            "config" : {},
+            "dependencies" : {
+                "bake_provider_handle" : "storage@local",
+                "yokan_provider_handle" : "metadata@local"
+            }
+        }
+    ]
+}
