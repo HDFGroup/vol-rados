@@ -33,7 +33,7 @@ export HDF5_PLUGIN_PATH=/home/runner/install/bin/
 export MOBJECT_CLUSTER_FILE=/home/runner/mobject.ssg
 
 bake-mkpool -s 50M /tmp/mobject.dat
-bedrock na+sm -c $PWD/config.json -v trace &
+bedrock na+sm -c $PWD/config2.json -v trace &
 ior -g -a HDF5 -t 64k -b 128k
 
 

@@ -1,4 +1,4 @@
-name: ior
+name: ior file_backend
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: ior
+name: ior pmem_backend
 
 on:
   push:
