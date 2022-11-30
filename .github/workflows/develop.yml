@@ -2,11 +2,11 @@ name: spack mobject@develop+bedrock
 
 on:
   push:
-    branches: [ master- ]
+    branches: [ master ]
     paths-ignore:
     - 'doc/**'
   pull_request:
-    branches: [ master- ]
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
@@ -16,6 +16,7 @@ jobs:
     - name: Install APT Dependencies
       run: |
         sudo apt update
+        sudo apt-get install -y gfortran-12
         sudo apt-get install -y autoconf
         sudo apt-get install -y automake
         sudo apt-get install -y cmake
