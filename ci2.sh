@@ -31,6 +31,7 @@ echo "Testing using ior"
 export HDF5_VOL_CONNECTOR=rados
 export HDF5_PLUGIN_PATH=/home/runner/install/lib/
 export MOBJECT_CLUSTER_FILE=/home/runner/mobject.ssg
+export HDF5_RADOS_POOL=test_pool
 
 bake-mkpool -s 50M /tmp/mobject.dat
 bedrock na+sm -c $PWD/config2.json -v trace &
