@@ -73,6 +73,7 @@ jobs:
         spack load mobject
         spack install hdf5@develop
         spack load hdf5
+        spack load mpi
         mkdir src/build
         cd src/build
         cmake -D BUILD_TESTING=ON -D BUILD_EXAMPLES=ON ..

@@ -37,6 +37,7 @@ export HDF5_RADOS_POOL=test_pool
 bake-mkpool -s 50M /dev/shm/mobject.dat
 bedrock na+sm -c $PWD/config.json -v trace &
 sleep 5
-ior -g -a HDF5 -t 64k -b 128k
+ior -g -a HDF5 -t 64k -b 128k -E -k
+
 
 
