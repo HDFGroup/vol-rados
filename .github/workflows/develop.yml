@@ -46,7 +46,7 @@ jobs:
       with:
         repository: mochi-hpc/mochi-spack-packages
         path: ./mochi-spack-packages
-    - name: Run a multi-line script
+    - name: Test with CMake
       run: |
         . ./spack/share/spack/setup-env.sh
         spack compiler find
@@ -69,7 +69,7 @@ jobs:
         spack external find zlib
         spack external find xz
         spack repo add ./mochi-spack-packages
-        spack install --test root mobject@develop+bedrock
+        spack install mobject@develop+bedrock
         spack load mobject
         spack install hdf5@develop
         spack load hdf5
