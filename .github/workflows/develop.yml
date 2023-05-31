@@ -29,7 +29,6 @@ jobs:
         sudo apt-get install -y libedit-dev
         sudo apt-get install -y libncurses6
         sudo apt-get install -y libxml2-dev
-        sudo apt-get install -y mpich
         sudo apt-get install -y openssl
         sudo apt-get install -y libboost-dev
     - name: Get Sources
@@ -68,12 +67,13 @@ jobs:
         spack external find pkgconf
         spack external find zlib
         spack external find xz
+        spack install mpi
+        spack load mpi
         spack repo add ./mochi-spack-packages
         spack install mobject@develop+bedrock
         spack load mobject
-        spack install hdf5@develop
+        spack install hdf5@develop-1.15
         spack load hdf5
-        spack load mpi
         mkdir src/build
         cd src/build
         cmake -D BUILD_TESTING=ON -D BUILD_EXAMPLES=ON ..
