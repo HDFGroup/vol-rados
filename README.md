@@ -1,14 +1,19 @@
 # HDF5 RADOS VOL connector
 
+[![check spelling](https://github.com/hyoklee/vol-rados/actions/workflows/spell.yml/badge.svg)](https://github.com/hyoklee/vol-rados/actions/workflows/spell.yml)
+[![lint commit messages](https://github.com/hyoklee/vol-rados/actions/workflows/commitlint.yml/badge.svg)](https://github.com/hyoklee/vol-rados/actions/workflows/commitlint.yml)
+[![spack mobject@develop+bedrock](https://github.com/hyoklee/vol-rados/actions/workflows/develop.yml/badge.svg)](https://github.com/hyoklee/vol-rados/actions/workflows/develop.yml)
+
 ## Table of Contents
-1. [Description](#1-Description)
-2. [Installation](#2-Installation)
-    * [Prerequisites](#Prerequisites)
-    * [Build instructions](#Build-instructions)
-    * [CMake options](#CMake-options)
-    * [Connector options](#Connector-options)
-3. [Testing and Usage](#3-Testing-And-Usage)
-4. [More information](#4-More-Information)
+
+1.  [Description](#1-Description)
+2.  [Installation](#2-Installation)
+    *   [Prerequisites](#Prerequisites)
+    *   [Build instructions](#Build-instructions)
+    *   [CMake options](#CMake-options)
+    *   [Connector options](#Connector-options)
+3.  [Testing and Usage](#3-Testing-And-Usage)
+4.  [More information](#4-More-Information)
 
 ## 1. Description
 
@@ -28,23 +33,23 @@ be loaded in an HDF5 application at runtime.
 
 To build the RADOS VOL connector, the following are required:
 
-+ `libhdf5` - The [HDF5](https://www.hdfgroup.org/downloads/hdf5/) library.
-            Minimum version required is 1.13.3, compiled with
-            support for parallel I/O.
+*   `libhdf5` - The [HDF5](https://www.hdfgroup.org/downloads/hdf5/) library.
+    Minimum version required is 1.13.3, compiled with
+    support for parallel I/O.
 
-+ An MPI library implementation
+*   An MPI library implementation
 
 Additional dependencies are required, depending on which type of storage is of interest.
 If interested in accessing Mobject-based storage (the default mode of operation), the
 following are required:
 
-+ [Mobject](https://github.com/mochi-hpc/mobject)
+*   [Mobject](https://github.com/mochi-hpc/mobject)
 
 If interested in accessing Ceph-based storage, the following are required:
 
-+ [Ceph](https://docs.ceph.com/en/quincy/start/intro/)
+*   [Ceph](https://docs.ceph.com/en/quincy/start/intro/)
 
-+ `librados` - The [RADOS API library](https://docs.ceph.com/en/quincy/rados/api/librados-intro/).
+*   `librados` - The [RADOS API library](https://docs.ceph.com/en/quincy/rados/api/librados-intro/).
 
 Compiled libraries must either exist in the system's library paths or must be
 pointed to during the RADOS VOL connector build process. The simplest way to
@@ -111,22 +116,22 @@ depending on the platform and CMake generator used.
 The following are some CMake options that may be desirable to set when building
 the RADOS VOL connector:
 
-  * `CMAKE_INSTALL_PREFIX` - This option controls the install directory that the resulting output files are written to. The default value is `/usr/local`.
-  * `CMAKE_BUILD_TYPE` - This option controls the type of build used for the VOL connector. Valid values are Release, Debug, RelWithDebInfo and MinSizeRel; the default build type is RelWithDebInfo.
+*   `CMAKE_INSTALL_PREFIX` - This option controls the install directory that the resulting output files are written to. The default value is `/usr/local`.
+*   `CMAKE_BUILD_TYPE` - This option controls the type of build used for the VOL connector. Valid values are Release, Debug, RelWithDebInfo and MinSizeRel; the default build type is RelWithDebInfo.
 
 ### Connector options
 
 The following connector-specific CMake options are available when building the
 RADOS VOL connector:
 
-  * `HDF5_VOL_RADOS_USE_MOBJECT` - This option specifies whether the VOL connector
-  should be built with Mobject-based storage support. This is the default mode
-  for the connector. If this option is disabled, the connector will instead be
-  built with support for Ceph-based storage via `librados`.
-  * `BUILD_TESTING` - This option is used to enable/disable building of the
-  RADOS VOL connector's tests. The default value is `OFF`.
-  * `BUILD_EXAMPLES` - This option is used to enable/disable building of the
-  RADOS VOL connector's HDF5 examples. The default value is `OFF`.
+*   `HDF5_VOL_RADOS_USE_MOBJECT` - This option specifies whether the VOL connector
+    should be built with Mobject-based storage support. This is the default mode
+    for the connector. If this option is disabled, the connector will instead be
+    built with support for Ceph-based storage via `librados`.
+*   `BUILD_TESTING` - This option is used to enable/disable building of the
+    RADOS VOL connector's tests. The default value is `OFF`.
+*   `BUILD_EXAMPLES` - This option is used to enable/disable building of the
+    RADOS VOL connector's HDF5 examples. The default value is `OFF`.
 
 ## 3. Testing and Usage
 
@@ -137,19 +142,19 @@ of these tests is disabled by default, but can be enabled by setting the
 
 For information on how to use the RADOS VOL connector with an HDF5 application,
 including setting up and running a Mobject or Ceph server, please refer to the
-RADOS VOL User's Guide under _docs/users_guide.pdf_.
+RADOS VOL User's Guide under *docs/users\_guide.pdf*.
 
 ## 4. More Information
 
-+ Mochi
-    + https://mochi.readthedocs.io/en/latest/
+*   Mochi
+    *   https://mochi.readthedocs.io/en/latest/
 
-+ Mobject
-    + https://github.com/mochi-hpc/mobject
+*   Mobject
+    *   https://github.com/mochi-hpc/mobject
 
-+ Ceph
-    + https://docs.ceph.com/en/quincy/start/intro/
+*   Ceph
+    *   https://docs.ceph.com/en/quincy/start/intro/
 
-+ HDF5
-    + https://www.hdfgroup.org/solutions/hdf5/
-    + https://portal.hdfgroup.org/display/HDF5/Virtual+Object+Layer
+*   HDF5
+    *   https://www.hdfgroup.org/solutions/hdf5/
+    *   https://portal.hdfgroup.org/display/HDF5/Virtual+Object+Layer

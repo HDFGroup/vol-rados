@@ -3073,7 +3073,7 @@ H5VL_rados_oid_create(const H5VL_rados_file_t *file, uint64_t idx,
     /* Create binary oid */
     H5VL_rados_oid_create_binary(idx, obj_type, &tmp_bin_oid);
 
-    /* Create sting oid */
+    /* Create string oid */
     if(H5VL_rados_oid_create_string(file, tmp_bin_oid, oid) < 0)
         HGOTO_ERROR(H5E_VOL, H5E_CANTINIT, FAIL, "can't encode string object id");
 
